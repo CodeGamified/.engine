@@ -101,7 +101,7 @@ namespace CodeGamified.Time
         {
             if (!isPaused)
             {
-                double dt = Time.deltaTime * timeScale;
+                double dt = UnityEngine.Time.deltaTime * timeScale;
                 simulationTime += dt;
                 OnSimulationTimeChanged?.Invoke(simulationTime);
                 OnTimeAdvanced(dt);
