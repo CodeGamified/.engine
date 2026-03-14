@@ -304,10 +304,21 @@ namespace CodeGamified.Engine.Compiler
             public ExprNode Right;
             public string Op;
 
+            private static int _tempCounter;
+
             public override void Compile(CompilerContext ctx, int targetReg)
             {
                 Left.Compile(ctx, targetReg);
+
+                // Spill Left result to temp memory before evaluating Right,
+                // because Right may contain function calls that clobber R0.
+                int tempAddr = ctx.GetVariableAddress($"_binop_tmp_{_tempCounter++}");
+                ctx.Emit(OpCode.STORE_MEM, targetReg, tempAddr, sourceLine: SourceLine, comment: "spill left operand");
+
                 Right.Compile(ctx, targetReg + 1);
+
+                // Restore Left result
+                ctx.Emit(OpCode.LOAD_MEM, targetReg, tempAddr, sourceLine: SourceLine, comment: "restore left operand");
 
                 switch (Op)
                 {
@@ -369,6 +380,45 @@ namespace CodeGamified.Engine.Compiler
                 int idx = ctx.AddFloatConstant(Value ? 1f : 0f);
                 ctx.Emit(OpCode.LOAD_FLOAT, targetReg, idx,
                     sourceLine: SourceLine, comment: Value ? "True" : "False");
+            }
+        }
+
+        public class StringNode : ExprNode
+        {
+            public string Value;
+            public override void Compile(CompilerContext ctx, int targetReg)
+            {
+                int idx = ctx.AddStringConstant(Value);
+                int floatIdx = ctx.AddFloatConstant((float)idx);
+                ctx.Emit(OpCode.LOAD_FLOAT, targetReg, floatIdx,
+                    sourceLine: SourceLine, comment: $"load str \"{Value}\" (sidx={idx})");
+            }
+        }
+
+        /// <summary>
+        /// Function call used as an expression (RHS of assignment, argument, etc.).
+        /// Result lands in targetReg (R0 by convention from CallNode, then MOV if needed).
+        /// </summary>
+        public class CallExprNode : ExprNode
+        {
+            public string FunctionName;
+            public List<ExprNode> Args = new List<ExprNode>();
+
+            public override void Compile(CompilerContext ctx, int targetReg)
+            {
+                // Compile as a statement call (result in R0)
+                var call = new CallNode
+                {
+                    SourceLine = SourceLine,
+                    FunctionName = FunctionName,
+                    Args = Args
+                };
+                call.Compile(ctx);
+
+                // Move result from R0 to targetReg if different
+                if (targetReg != 0)
+                    ctx.Emit(OpCode.MOV, targetReg, 0, sourceLine: SourceLine,
+                        comment: $"mov R{targetReg} ← R0");
             }
         }
     }

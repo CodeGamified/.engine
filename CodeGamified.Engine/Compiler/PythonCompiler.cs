@@ -65,6 +65,7 @@ namespace CodeGamified.Engine.Compiler
                 Instructions = ctx.Instructions.ToArray(),
                 Variables = ctx.Variables,
                 FloatConstants = ctx.FloatConstants.ToArray(),
+                StringConstants = ctx.StringConstants.ToArray(),
                 DeclaredObjects = new Dictionary<string, string>(ctx.ObjectTypes),
                 Errors = ctx.Errors
             };
@@ -334,6 +335,15 @@ namespace CodeGamified.Engine.Compiler
             if (expr == "True") return new AstNodes.BoolNode { Value = true, SourceLine = lineNum };
             if (expr == "False") return new AstNodes.BoolNode { Value = false, SourceLine = lineNum };
 
+            // String literal: "..." or '...'
+            if ((expr.StartsWith("\"") && expr.EndsWith("\"") && expr.Length >= 2) ||
+                (expr.StartsWith("'") && expr.EndsWith("'") && expr.Length >= 2))
+                return new AstNodes.StringNode
+                {
+                    Value = expr.Substring(1, expr.Length - 2),
+                    SourceLine = lineNum
+                };
+
             // Strip outer parentheses: (expr) → expr
             if (expr.StartsWith("(") && FindMatchingParen(expr, 0) == expr.Length - 1)
                 return ParseExpression(expr.Substring(1, expr.Length - 2), lineNum);
@@ -369,6 +379,22 @@ namespace CodeGamified.Engine.Compiler
                 int idx = FindOperator(expr, op);
                 if (idx > 0)
                     return MakeBinOp(expr, op, idx, lineNum);
+            }
+
+            // Function call as expression: func() or func(arg, ...)
+            var callExprMatch = Regex.Match(expr, @"^(\w+)\((.*)\)$");
+            if (callExprMatch.Success)
+            {
+                var node = new AstNodes.CallExprNode
+                {
+                    SourceLine = lineNum,
+                    FunctionName = callExprMatch.Groups[1].Value
+                };
+                string argsStr = callExprMatch.Groups[2].Value.Trim();
+                if (!string.IsNullOrEmpty(argsStr))
+                    foreach (var arg in argsStr.Split(','))
+                        node.Args.Add(ParseExpression(arg.Trim(), lineNum));
+                return node;
             }
 
             // Variable reference

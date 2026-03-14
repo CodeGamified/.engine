@@ -72,7 +72,35 @@ namespace CodeGamified.Engine
         }
 
         // ═══════════════════════════════════════════════════════════════
-        // EXECUTION LOOP
+        // TICK-BASED EXECUTION (deterministic, budget-limited)
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Execute one simulation tick with a fixed instruction budget.
+        /// Resets PC to 0 (re-runs program from top). Memory persists.
+        /// Deterministic: same budget = same results regardless of time scale.
+        /// </summary>
+        public int ExecuteTick(int budget)
+        {
+            if (Program == null) return 0;
+
+            // Reset PC — each tick is a fresh run of the script
+            State.PC = 0;
+            State.IsHalted = false;
+            State.IsWaiting = false;
+
+            int executed = 0;
+            for (int i = 0; i < budget && !State.IsHalted; i++)
+            {
+                ExecuteOne();
+                executed++;
+            }
+
+            return executed;
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CONTINUOUS EXECUTION (time-scale aware, for SeaRäuber/BitNaughts)
         // ═══════════════════════════════════════════════════════════════
 
         public int Update(float deltaTime)
@@ -111,10 +139,11 @@ namespace CodeGamified.Engine
             }
             else
             {
-                int batchSize = Mathf.Min(MaxBatchSize, Mathf.CeilToInt(scale / StepThroughThreshold));
+                // Run until WAIT, HALT, or MaxBatchSize — WAIT is the real throttle,
+                // not an artificial instruction budget.
                 int executed = 0;
 
-                for (int i = 0; i < batchSize && !State.IsHalted && !State.IsWaiting; i++)
+                for (int i = 0; i < MaxBatchSize && !State.IsHalted && !State.IsWaiting; i++)
                 {
                     ExecuteOne();
                     executed++;

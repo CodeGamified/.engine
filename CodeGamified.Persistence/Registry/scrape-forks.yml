@@ -1,0 +1,107 @@
+name: Scrape Player Forks → Build Registry Index
+
+# ═══════════════════════════════════════════════════════════════
+#  GitHub Action for codegamified/player-registry
+#
+#  Runs nightly (or on push). Uses the GitHub API to:
+#    1. Find all forks of codegamified/player-data
+#    2. Read each fork's programs/ and ships/ directories
+#    3. Build registry.json index
+#    4. Commit + push if changed
+#
+#  Cost: $0 — runs on GitHub's free Actions minutes
+#  Auth: GITHUB_TOKEN (automatic, no PAT needed)
+# ═══════════════════════════════════════════════════════════════
+
+on:
+  schedule:
+    - cron: '0 4 * * *'       # Daily at 04:00 UTC
+  workflow_dispatch:           # Manual trigger
+  push:
+    branches: [main]
+
+permissions:
+  contents: write              # Needed to commit registry.json
+
+jobs:
+  build-registry:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build registry index
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          TEMPLATE_OWNER="codegamified"
+          TEMPLATE_REPO="player-data"
+          OUTPUT="registry.json"
+
+          echo "Fetching forks of ${TEMPLATE_OWNER}/${TEMPLATE_REPO}..."
+
+          # Paginate through all forks (100 per page)
+          PAGE=1
+          ALL_FORKS="[]"
+          while true; do
+            FORKS=$(gh api "repos/${TEMPLATE_OWNER}/${TEMPLATE_REPO}/forks?per_page=100&page=${PAGE}" \
+              --jq '[.[] | {owner: .owner.login, repo: .name, created: .created_at}]')
+            COUNT=$(echo "$FORKS" | jq 'length')
+            if [ "$COUNT" -eq 0 ]; then break; fi
+            ALL_FORKS=$(echo "$ALL_FORKS $FORKS" | jq -s 'add')
+            PAGE=$((PAGE + 1))
+          done
+
+          TOTAL=$(echo "$ALL_FORKS" | jq 'length')
+          echo "Found ${TOTAL} forks"
+
+          # Build player entries by scraping each fork's contents
+          echo '{"generated":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","players":{' > "$OUTPUT"
+
+          FIRST=true
+          echo "$ALL_FORKS" | jq -c '.[]' | while read -r FORK; do
+            OWNER=$(echo "$FORK" | jq -r '.owner')
+            REPO=$(echo "$FORK" | jq -r '.repo')
+            CREATED=$(echo "$FORK" | jq -r '.created')
+
+            echo "  Scraping ${OWNER}/${REPO}..."
+
+            # Fetch program file names
+            PROGRAMS=$(gh api "repos/${OWNER}/${REPO}/contents/programs" \
+              --jq '[.[] | select(.name | endswith(".json")) | .name | rtrimstr(".json")]' \
+              2>/dev/null || echo '[]')
+
+            # Fetch ship file names
+            SHIPS=$(gh api "repos/${OWNER}/${REPO}/contents/ships" \
+              --jq '[.[] | select(.name | endswith(".json")) | .name | rtrimstr(".json")]' \
+              2>/dev/null || echo '[]')
+
+            # Append to JSON
+            if [ "$FIRST" = true ]; then
+              FIRST=false
+            else
+              echo ',' >> "$OUTPUT"
+            fi
+
+            cat >> "$OUTPUT" <<EOF
+          "${OWNER}":{"repo":"${OWNER}/${REPO}","joined":"${CREATED%%T*}","programs":${PROGRAMS},"ships":${SHIPS}}
+          EOF
+          done
+
+          echo '}}' >> "$OUTPUT"
+
+          # Pretty-print
+          jq '.' "$OUTPUT" > tmp.json && mv tmp.json "$OUTPUT"
+
+          echo "Registry built with ${TOTAL} players"
+          cat "$OUTPUT"
+
+      - name: Commit if changed
+        run: |
+          git config user.name "codegamified-bot"
+          git config user.email "bot@codegamified"
+          git add registry.json
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "chore: update registry $(date -u +%Y-%m-%d)"
+          git push

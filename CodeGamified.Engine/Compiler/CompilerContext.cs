@@ -17,6 +17,9 @@ namespace CodeGamified.Engine.Compiler
         /// <summary>Float constant table — avoids *1000 int truncation.</summary>
         public List<float> FloatConstants = new List<float>();
 
+        /// <summary>String constant table for StringNode values.</summary>
+        public List<string> StringConstants = new List<string>();
+
         // ═══════════════════════════════════════════════════════════════
         // OOP OBJECT TRACKING
         // ═══════════════════════════════════════════════════════════════
@@ -121,6 +124,15 @@ namespace CodeGamified.Engine.Compiler
                 if (FloatConstants[i] == value) return i;
             FloatConstants.Add(value);
             return FloatConstants.Count - 1;
+        }
+
+        /// <summary>Add a string constant, return its index.</summary>
+        public int AddStringConstant(string value)
+        {
+            for (int i = 0; i < StringConstants.Count; i++)
+                if (StringConstants[i] == value) return i;
+            StringConstants.Add(value);
+            return StringConstants.Count - 1;
         }
     }
 }

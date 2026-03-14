@@ -19,6 +19,9 @@ namespace CodeGamified.Engine
         /// <summary>Float constant table for LOAD_FLOAT instructions</summary>
         public float[] FloatConstants;
 
+        /// <summary>String constant table for StringNode values</summary>
+        public string[] StringConstants;
+
         /// <summary>Declared objects (name → type) for visualization</summary>
         public Dictionary<string, string> DeclaredObjects = new Dictionary<string, string>();
 
