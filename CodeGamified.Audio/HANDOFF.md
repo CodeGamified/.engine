@@ -3,141 +3,116 @@
 ## Goal
 
 New shared package: `CodeGamified.Audio`  
-Consumes the event hooks already wired in `CodeGamified.Editor` and provides a
-game-agnostic audio/haptic feedback layer for the tap-to-code editor (and any
-future TUI surface that needs sound).
+Provides a game-agnostic audio/haptic feedback layer that hooks **every module's
+events** (Editor, Engine, Time, Persistence). Games decide which hooks get real
+clips and which stay silent.
 
-## Existing Hooks (ready to consume)
+**Time-scale-gated**: each handler group has a `MaxTimeScale` threshold.
+When `getTimeScale()` exceeds it, the sound is silently skipped.
 
-### CodeEditorWindow events
+## Hookable Events (all modules)
+
+### Editor (CodeEditorWindow / CodeDocument)
 
 | Event | Signature | Fires when |
-|-------|-----------|-----------|
-| `OnOptionSelected` | `Action<string>` | Player taps any option (arg = label) |
+|-------|-----------|------------|
+| `OnOptionSelected` | `Action<string>` | Player taps any option |
 | `OnUndoPerformed` | `Action` | Undo executed |
 | `OnRedoPerformed` | `Action` | Redo executed |
-| `OnCompileError` | `Action<int>` | Compilation fails (arg = error count) |
+| `OnCompileError` | `Action<int>` | Compilation fails |
 | `OnDocumentChanged` | `Action` | Any document mutation |
 
-### CodeDocument event
+### Engine (CodeExecutor)
 
 | Event | Signature | Fires when |
-|-------|-----------|-----------|
-| `OnDocumentChanged` | `Action` | Any mutation (insert, remove, replace, swap, undo, redo) |
+|-------|-----------|------------|
+| `OnInstructionExecuted` | `Action<Instruction, MachineState>` | Each instruction |
+| `OnOutput` | `Action<GameEvent>` | Game event emitted |
+| `OnHalted` | `Action` | Program stopped |
+| `OnIOBlocked` | `Action<Instruction>` | I/O rejected |
+| `OnWaitStateChanged` | `Action<bool, float>` | Wait entered/exited |
 
-`CodeEditorWindow.OnDocumentChanged` is a relay of `CodeDocument.OnDocumentChanged`.
-Subscribe to the window event — it handles attachment/detachment on `Open()`.
+### Time (TimeWarpController)
 
-### Where they fire
+| Event | Signature | Fires when |
+|-------|-----------|------------|
+| `OnWarpStateChanged` | `Action<WarpState>` | Warp state machine transition |
+| `OnWarpArrived` | `Action` | Arrived at target time |
+| `OnWarpCancelled` | `Action` | Warp cancelled |
+| `OnWarpComplete` | `Action` | Hold elapsed, back to idle |
 
-| Hook | Source file | Method |
-|------|-----------|--------|
-| `OnOptionSelected` | `CodeEditorWindow.cs` | `SelectOption()` |
-| `OnUndoPerformed` | `CodeEditorWindow.cs` | `DoUndo()` |
-| `OnRedoPerformed` | `CodeEditorWindow.cs` | `DoRedo()` |
-| `OnCompileError` | `CodeEditorWindow.cs` | `CompileAndRun()` |
-| `OnDocumentChanged` | `CodeDocument.cs` | `RecordAction()`, `Undo()`, `Redo()` |
+### Persistence (PersistenceBehaviour)
 
-## Proposed Architecture
+| Event | Signature | Fires when |
+|-------|-----------|------------|
+| `OnSaveStarted` | `Action` | Save began |
+| `OnSaveCompleted` | `Action<GitResult>` | Save finished |
+| `OnSyncCompleted` | `Action<GitResult>` | Sync finished |
+
+## Architecture
 
 ```
 CodeGamified.Audio/
-├── CodeGamified.Audio.asmdef   (refs: none — pure audio, no Editor/Engine dep)
-├── IAudioProvider.cs           interface games implement
-├── AudioBridge.cs              static wiring helper: Subscribe(editor, provider)
-├── HapticBridge.cs             static wiring helper: Subscribe(editor, provider)
+├── CodeGamified.Audio.asmdef   (refs: none — zero-dep)
+├── IAudioProvider.cs           23 hook methods (Editor/Engine/Time/Persistence)
+├── IHapticProvider.cs          intensity-based haptics
+├── NullAudioProvider.cs        silent default
+├── NullHapticProvider.cs       no-op default
+├── AudioBridge.cs              handler classes with time-scale gate
+├── HapticBridge.cs             handler classes with time-scale gate
 └── README.md
 ```
 
-### Why no Editor/Engine reference?
+### Zero-dep design
 
-The Audio package should be **event-consumer only**. It receives `Action` / `Action<string>`
-delegates — no need to know about AST nodes or TUI rows. The **game project** wires
-Editor → Audio in a MonoBehaviour or bootstrapper. This keeps the dependency graph clean:
-
-```
-Game
-├── CodeGamified.Editor  (refs Engine + TUI)
-├── CodeGamified.Audio   (refs nothing)
-└── wiring: editor.OnOptionSelected += audioProvider.PlayTap
-```
-
-## IAudioProvider (proposed)
+Audio never references Editor, Engine, Time, or Persistence. Handler methods
+use primitive signatures (`void`, `string`, `int`). For events with module-specific
+types (e.g. `Action<Instruction, MachineState>`), the game writes a one-line lambda:
 
 ```csharp
-namespace CodeGamified.Audio
-{
-    public interface IAudioProvider
-    {
-        void PlayTap();              // option selected
-        void PlayInsert();           // statement inserted (OnDocumentChanged)
-        void PlayDelete();           // statement deleted
-        void PlayUndo();             // undo
-        void PlayRedo();             // redo
-        void PlayCompileSuccess();   // valid program compiled
-        void PlayCompileError();     // compilation failed
-        void PlayNavigate();         // cursor moved / option drilled into
-    }
-}
+executor.OnInstructionExecuted += (_, _) => engineAudio.InstructionStep();
 ```
 
-Games implement with their own `AudioClip` assets. A `NullAudioProvider` ships as default.
+### Time-scale gating
 
-## IHapticProvider (proposed)
+Each handler group inherits `GatedHandlers` which has:
+- `MaxTimeScale` — mutable threshold (tune at runtime)
+- `Func<float> getTimeScale` — injected at creation
 
-```csharp
-namespace CodeGamified.Audio
-{
-    public interface IHapticProvider
-    {
-        void TapLight();     // option tap
-        void TapMedium();    // insert / delete
-        void TapHeavy();     // compile error
-        void Buzz(float duration);  // generic
-    }
-}
-```
+Default thresholds:
+| Group | Default | Rationale |
+|-------|---------|-----------|
+| Editor | ∞ | Always audible |
+| Engine | 10 | Step-mode only |
+| Time | ∞ | Warp sounds are the point |
+| Persistence | ∞ | Always audible |
 
-## AudioBridge (proposed wiring helper)
+## Resolved Questions
 
-```csharp
-public static class AudioBridge
-{
-    public static void Subscribe(CodeEditorWindow editor, IAudioProvider audio)
-    {
-        editor.OnOptionSelected += (_) => audio.PlayTap();
-        editor.OnUndoPerformed  += ()  => audio.PlayUndo();
-        editor.OnRedoPerformed  += ()  => audio.PlayRedo();
-        editor.OnCompileError   += (_) => audio.PlayCompileError();
-        editor.OnDocumentChanged += () => audio.PlayInsert();
-    }
-}
-```
-
-> **Note:** `AudioBridge` _does_ need an Editor ref if it takes `CodeEditorWindow`.
-> Alternative: keep it in the game project and make Audio truly zero-dep.
-> Decision TBD — either approach works.
+| # | Question | Decision |
+|---|----------|----------|
+| 1 | Bridge in Audio or game? | **B) Zero-dep.** Audio returns handler classes, game does `+=` wiring. |
+| 5 | Cover all modules or just Editor? | **All modules.** Every hookable event gets a slot in IAudioProvider. Game decides which get real clips. |
+| 6 | Time-dependent control? | **Built-in.** `GatedHandlers.MaxTimeScale` + `Func<float> getTimeScale`. |
 
 ## Open Questions
 
 | # | Question | Options |
 |---|----------|---------|
-| 1 | Should `AudioBridge` live in Audio (adding Editor ref) or in the game project? | A) Audio refs Editor — convenient. B) Game wires manually — Audio stays zero-dep. |
-| 2 | Distinguish insert vs delete vs replace in `OnDocumentChanged`? | Current event is a bare `Action`. Could add `Action<EditKind>` enum if needed. |
+| 2 | Distinguish insert vs delete vs replace in `OnDocumentChanged`? | Current event is bare `Action`. Could add `Action<EditKind>` enum if needed. |
 | 3 | Pool `AudioSource` components or one-shot `PlayOneShot`? | `PlayOneShot` is simpler; pooling only if overlapping sounds clip. |
 | 4 | Mobile haptics: Unity `Handheld.Vibrate()` vs native plugin? | `Handheld.Vibrate()` is coarse. iOS/Android native gives granular patterns. |
-| 5 | Should audio package also cover TUI terminal sounds (scrollback, typing)? | Scope creep risk. Start with Editor hooks, extend later. |
 
 ## Checklist
 
 - [x] Create `.engine/CodeGamified.Audio/` directory
-- [x] Create `CodeGamified.Audio.asmdef` (zero-dep, option B — no Editor/Engine refs)
-- [x] `IAudioProvider.cs` — interface
-- [x] `IHapticProvider.cs` — interface
+- [x] Create `CodeGamified.Audio.asmdef` (zero-dep, no Engine refs)
+- [x] `IAudioProvider.cs` — 23 methods across all modules
+- [x] `IHapticProvider.cs` — intensity-based interface
 - [x] `NullAudioProvider.cs` — silent default
 - [x] `NullHapticProvider.cs` — no-op default
-- [x] `AudioBridge.cs` — zero-dep wiring helper (returns handler delegates)
-- [x] `HapticBridge.cs` — zero-dep wiring helper (returns handler delegates)
+- [x] `AudioBridge.cs` — per-module handler classes with time-scale gating
+- [x] `HapticBridge.cs` — per-module handler classes with time-scale gating
 - [x] `README.md`
 - [ ] Integration example in a game project (e.g. Pong or Satellite)
 - [ ] Verify no new compile errors in Editor or Engine

@@ -1,18 +1,25 @@
 # CodeGamified.Audio
 
-Game-agnostic audio and haptic feedback layer for the tap-to-code editor.
+Game-agnostic audio and haptic feedback layer for **all engine modules**.
 
 ## Design
 
-**Zero dependencies** — this package has no references to Editor, Engine, or TUI.
-It exposes provider interfaces and bridge helpers that return handler delegates.
-The **game project** wires Editor events → Audio/Haptic handlers.
+**Zero dependencies** — no references to Editor, Engine, Time, or Persistence.
+Exposes provider interfaces and bridge handler classes. The **game project** wires
+module events → handlers.
+
+**Time-scale-gated** — each handler group has a `MaxTimeScale` threshold.
+When `getTimeScale()` exceeds it, calls are silently skipped. Games pass a
+`Func<float>` (typically `() => Time.timeScale`) at creation.
 
 ```
 Game
-├── CodeGamified.Editor   (refs Engine + TUI)
-├── CodeGamified.Audio    (refs nothing)
-└── wiring: editor events += bridge handlers
+├── CodeGamified.Editor       (refs Engine + TUI)
+├── CodeGamified.Engine       (execution, bytecode)
+├── CodeGamified.Time         (time warp)
+├── CodeGamified.Persistence  (git-backed saves)
+├── CodeGamified.Audio        (refs nothing)
+└── wiring: module events += bridge handlers
 ```
 
 ## Quick Start
@@ -22,19 +29,41 @@ Game
 ```csharp
 public class MyAudio : MonoBehaviour, IAudioProvider
 {
-    [SerializeField] AudioClip tapClip;
+    [SerializeField] AudioClip tapClip, insertClip, errorClip;
+    // leave unused methods empty — no sound = no clip assigned
     AudioSource _src;
 
     void Awake() => _src = GetComponent<AudioSource>();
 
+    // Editor
     public void PlayTap()            => _src.PlayOneShot(tapClip);
-    public void PlayInsert()         => _src.PlayOneShot(tapClip);
-    public void PlayDelete()         => _src.PlayOneShot(tapClip);
+    public void PlayInsert()         => _src.PlayOneShot(insertClip);
+    public void PlayDelete()         { }
     public void PlayUndo()           => _src.PlayOneShot(tapClip);
     public void PlayRedo()           => _src.PlayOneShot(tapClip);
-    public void PlayCompileSuccess() => _src.PlayOneShot(tapClip);
-    public void PlayCompileError()   => _src.PlayOneShot(tapClip);
-    public void PlayNavigate()       => _src.PlayOneShot(tapClip);
+    public void PlayCompileSuccess() { }
+    public void PlayCompileError()   => _src.PlayOneShot(errorClip);
+    public void PlayNavigate()       { }
+
+    // Engine
+    public void PlayInstructionStep() { }
+    public void PlayOutput()          { }
+    public void PlayHalted()          { }
+    public void PlayIOBlocked()       { }
+    public void PlayWaitStateChanged(){ }
+
+    // Time
+    public void PlayWarpStart()      { }
+    public void PlayWarpCruise()     { }
+    public void PlayWarpDecelerate() { }
+    public void PlayWarpArrived()    { }
+    public void PlayWarpCancelled()  { }
+    public void PlayWarpComplete()   { }
+
+    // Persistence
+    public void PlaySaveStarted()    { }
+    public void PlaySaveCompleted()  { }
+    public void PlaySyncCompleted()  { }
 }
 ```
 
@@ -45,21 +74,65 @@ using CodeGamified.Audio;
 
 void Start()
 {
-    var audioHandlers  = AudioBridge.CreateHandlers(myAudioProvider);
-    var hapticHandlers = HapticBridge.CreateHandlers(myHapticProvider);
+    Func<float> ts = () => Time.timeScale;
 
-    editor.OnOptionSelected  += audioHandlers.OptionSelected;
-    editor.OnUndoPerformed   += audioHandlers.UndoPerformed;
-    editor.OnRedoPerformed   += audioHandlers.RedoPerformed;
-    editor.OnCompileError    += audioHandlers.CompileError;
-    editor.OnDocumentChanged += audioHandlers.DocumentChanged;
+    // ---- Audio ----
+    var editorAudio  = AudioBridge.ForEditor(audio, ts);
+    var engineAudio  = AudioBridge.ForEngine(audio, ts);   // MaxTimeScale = 10 by default
+    var timeAudio    = AudioBridge.ForTime(audio, ts);
+    var persistAudio = AudioBridge.ForPersistence(audio, ts);
 
-    editor.OnOptionSelected  += hapticHandlers.OptionSelected;
-    editor.OnUndoPerformed   += hapticHandlers.UndoPerformed;
-    editor.OnRedoPerformed   += hapticHandlers.RedoPerformed;
-    editor.OnCompileError    += hapticHandlers.CompileError;
-    editor.OnDocumentChanged += hapticHandlers.DocumentChanged;
+    // Editor — direct wire (signatures match)
+    editor.OnOptionSelected  += editorAudio.OptionSelected;
+    editor.OnUndoPerformed   += editorAudio.UndoPerformed;
+    editor.OnRedoPerformed   += editorAudio.RedoPerformed;
+    editor.OnCompileError    += editorAudio.CompileError;
+    editor.OnDocumentChanged += editorAudio.DocumentChanged;
+
+    // Engine — lambda wrappers for types Audio can't reference
+    executor.OnInstructionExecuted += (_, _) => engineAudio.InstructionStep();
+    executor.OnOutput              += _      => engineAudio.Output();
+    executor.OnHalted              += engineAudio.Halted;            // direct
+    executor.OnIOBlocked           += _      => engineAudio.IOBlocked();
+    executor.OnWaitStateChanged    += (_, _) => engineAudio.WaitStateChanged();
+
+    // Time — WarpState dispatch + direct events
+    warp.OnWarpStateChanged += state =>
+    {
+        switch (state)
+        {
+            case TimeWarpController.WarpState.Accelerating: timeAudio.WarpStart(); break;
+            case TimeWarpController.WarpState.Cruising:     timeAudio.WarpCruise(); break;
+            case TimeWarpController.WarpState.Decelerating: timeAudio.WarpDecelerate(); break;
+        }
+    };
+    warp.OnWarpArrived   += timeAudio.WarpArrived;
+    warp.OnWarpCancelled += timeAudio.WarpCancelled;
+    warp.OnWarpComplete  += timeAudio.WarpComplete;
+
+    // Persistence
+    persistence.OnSaveStarted   += persistAudio.SaveStarted;
+    persistence.OnSaveCompleted += _ => persistAudio.SaveCompleted();
+    persistence.OnSyncCompleted += _ => persistAudio.SyncCompleted();
+
+    // ---- Haptic (same pattern) ----
+    var editorHaptic = HapticBridge.ForEditor(haptic, ts);
+    editor.OnOptionSelected += editorHaptic.OptionSelected;
+    // ... etc.
 }
+```
+
+### 3. Tune thresholds at runtime
+
+```csharp
+// Engine sounds only in step-mode (default: 10x)
+engineAudio.MaxTimeScale = 5f;
+
+// Mute editor taps during warp
+editorAudio.MaxTimeScale = 100f;
+
+// Persistence sounds always play
+persistAudio.MaxTimeScale = float.MaxValue; // (already the default)
 ```
 
 ### Null providers
@@ -71,9 +144,18 @@ tests, platforms without sound, or as defaults before the game configures audio.
 
 | Interface | Methods |
 |-----------|---------|
-| `IAudioProvider` | `PlayTap`, `PlayInsert`, `PlayDelete`, `PlayUndo`, `PlayRedo`, `PlayCompileSuccess`, `PlayCompileError`, `PlayNavigate` |
+| `IAudioProvider` | Editor: `PlayTap`, `PlayInsert`, `PlayDelete`, `PlayUndo`, `PlayRedo`, `PlayCompileSuccess`, `PlayCompileError`, `PlayNavigate` │ Engine: `PlayInstructionStep`, `PlayOutput`, `PlayHalted`, `PlayIOBlocked`, `PlayWaitStateChanged` │ Time: `PlayWarpStart`, `PlayWarpCruise`, `PlayWarpDecelerate`, `PlayWarpArrived`, `PlayWarpCancelled`, `PlayWarpComplete` │ Persistence: `PlaySaveStarted`, `PlaySaveCompleted`, `PlaySyncCompleted` |
 | `IHapticProvider` | `TapLight`, `TapMedium`, `TapHeavy`, `Buzz(float)` |
 
-## Open Questions
+## Handler defaults
 
-See [HANDOFF.md](HANDOFF.md) for design decisions still TBD.
+| Handler group | Default `MaxTimeScale` | Rationale |
+|---------------|------------------------|----------|
+| `EditorHandlers` | `float.MaxValue` | Always audible |
+| `EngineHandlers` | `10` | Only in step-through mode |
+| `TimeHandlers` | `float.MaxValue` | Warp sounds are the point |
+| `PersistenceHandlers` | `float.MaxValue` | Always audible |
+
+## Open questions
+
+See [HANDOFF.md](HANDOFF.md) for remaining decisions.
