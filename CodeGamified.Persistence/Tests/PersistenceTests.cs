@@ -3,6 +3,7 @@
 //  Run via Unity Test Runner (Edit Mode)
 // ═══════════════════════════════════════════════════════════
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using CodeGamified.Persistence;
 using CodeGamified.Persistence.Providers;
