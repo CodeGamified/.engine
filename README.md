@@ -15,6 +15,10 @@ via `git submodule`. Improvements propagate to every game on `submodule update`.
 │   ├── MachineState.cs      Registers, stack, memory, flags, PC
 │   └── ...                  OpCode, Instruction, CpuFlags, GameEvent, CompiledProgram
 │
+├── CodeGamified.Time/     Simulation time: singleton clock + time warp state machine
+│   ├── SimulationTime.cs    Abstract base: time scale, pause, presets, events, sun stubs
+│   └── TimeWarpController.cs  Abstract warp: accel → cruise → decel → arrive
+│
 └── CodeGamified.TUI/       Terminal UI: row-based monospace layout → TMP rich-text
     ├── Primitives (11)        TUIColors, TUIGlyphs, TUIConfig, TUIGradient, TUIText,
     │                          TUIEasing, TUIEffects, TUILayout, TUIWidgets, TUIAnimation,
@@ -33,6 +37,7 @@ Each game repo adds these as submodules:
 
 ```bash
 git submodule add <repo> Assets/CodeGamified.Engine
+git submodule add <repo> Assets/CodeGamified.Time
 git submodule add <repo> Assets/CodeGamified.TUI
 ```
 
@@ -43,6 +48,8 @@ Games extend via interfaces/abstract classes — no forking required:
 | `IGameIOHandler` | Engine | Custom opcode execution (sensors, signals, orders) |
 | `ICompilerExtension` | Engine | Game builtins, known types, method compilation |
 | `ProgramBehaviour` | Engine | MonoBehaviour lifecycle for running programs |
+| `SimulationTime` | Time | Game clock, max scale, sun model, time formatting |
+| `TimeWarpController` | Time | Warp-to-event with camera/spawn hooks |
 | `TerminalWindow` | TUI | Concrete terminal panels (ship log, nav chart, etc.) |
 | `CodeDebuggerWindow` | TUI | Three-panel source/asm/state debugger |
 | `StatusBarBase` | TUI | Game-specific status bar sections |
@@ -52,6 +59,7 @@ Games extend via interfaces/abstract classes — no forking required:
 | Assembly | Dependencies |
 |---|---|
 | `CodeGamified.Engine` | — |
+| `CodeGamified.Time` | — |
 | `CodeGamified.TUI` | `Unity.TextMeshPro` |
 | `CodeGamified.TUI.Tests` | `CodeGamified.TUI`, `nunit.framework` (Editor-only) |
 
