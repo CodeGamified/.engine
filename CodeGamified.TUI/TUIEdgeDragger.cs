@@ -3,6 +3,7 @@
 //  Drag any edge to control what % of the screen the TUI uses
 //  Deduplicated: identical in BNUI and SRUI
 // ═══════════════════════════════════════════════════════════
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
@@ -24,6 +25,19 @@ namespace CodeGamified.TUI
         static readonly Color IDLE_COLOR    = new(1f, 1f, 1f, 0.03f);
         static readonly Color HOVER_COLOR   = new(0.4f, 0.8f, 1f, 0.25f);
         static readonly Color DRAG_COLOR    = new(0.4f, 0.8f, 1f, 0.45f);
+
+        // Linked edges — when this dragger moves, propagate to these targets
+        readonly List<(RectTransform rect, Edge edge)> _linkedEdges = new();
+
+        /// <summary>
+        /// Link another panel's edge to follow this dragger's movements.
+        /// E.g. dragging a status bar's Top edge can push code panels' Bottom edges.
+        /// </summary>
+        public TUIEdgeDragger LinkEdge(RectTransform target, Edge targetEdge)
+        {
+            _linkedEdges.Add((target, targetEdge));
+            return this;
+        }
 
         // ── Factory ─────────────────────────────────────────────
 
@@ -118,11 +132,45 @@ namespace CodeGamified.TUI
 
             targetRect.anchorMin = aMin;
             targetRect.anchorMax = aMax;
+
+            // Propagate to linked edges
+            if (_linkedEdges.Count > 0)
+            {
+                float value = GetEdgeAnchorValue(edge, aMin, aMax);
+                foreach (var (linkedRect, linkedEdge) in _linkedEdges)
+                    ApplyEdgeAnchorValue(linkedRect, linkedEdge, value);
+            }
         }
 
         public void OnEndDrag(PointerEventData eventData)
         {
             handleImage.color = HOVER_COLOR;
+        }
+
+        // ── Edge linking helpers ────────────────────────────────
+
+        static float GetEdgeAnchorValue(Edge e, Vector2 aMin, Vector2 aMax) => e switch
+        {
+            Edge.Left   => aMin.x,
+            Edge.Right  => aMax.x,
+            Edge.Top    => aMax.y,
+            Edge.Bottom => aMin.y,
+            _ => 0f
+        };
+
+        static void ApplyEdgeAnchorValue(RectTransform rect, Edge e, float value)
+        {
+            Vector2 min = rect.anchorMin;
+            Vector2 max = rect.anchorMax;
+            switch (e)
+            {
+                case Edge.Left:   min.x = value; break;
+                case Edge.Right:  max.x = value; break;
+                case Edge.Top:    max.y = value; break;
+                case Edge.Bottom: min.y = value; break;
+            }
+            rect.anchorMin = min;
+            rect.anchorMax = max;
         }
 
         // ── Hover feedback ──────────────────────────────────────
