@@ -1,0 +1,140 @@
+// ═══════════════════════════════════════════════════════════
+//  TUIEdgeDragger — Draggable edge handle for TUI resize
+//  Drag any edge to control what % of the screen the TUI uses
+//  Deduplicated: identical in BNUI and SRUI
+// ═══════════════════════════════════════════════════════════
+using UnityEngine;
+using UnityEngine.UI;
+using UnityEngine.EventSystems;
+
+namespace CodeGamified.TUI
+{
+    public class TUIEdgeDragger : MonoBehaviour,
+        IBeginDragHandler, IDragHandler, IEndDragHandler,
+        IPointerEnterHandler, IPointerExitHandler
+    {
+        public enum Edge { Left, Right, Top, Bottom }
+
+        Edge edge;
+        RectTransform targetRect;
+        RectTransform canvasRect;
+        Image handleImage;
+
+        const float MIN_FRACTION = 0.15f;
+        static readonly Color IDLE_COLOR    = new(1f, 1f, 1f, 0.03f);
+        static readonly Color HOVER_COLOR   = new(0.4f, 0.8f, 1f, 0.25f);
+        static readonly Color DRAG_COLOR    = new(0.4f, 0.8f, 1f, 0.45f);
+
+        // ── Factory ─────────────────────────────────────────────
+
+        public static TUIEdgeDragger Create(
+            RectTransform target, RectTransform canvas, Edge edge, float thickness = 8f)
+        {
+            var go = new GameObject($"Dragger_{edge}");
+            go.transform.SetParent(target, false);
+
+            var rt = go.AddComponent<RectTransform>();
+            switch (edge)
+            {
+                case Edge.Left:
+                    rt.anchorMin = new Vector2(0, 0);
+                    rt.anchorMax = new Vector2(0, 1);
+                    rt.pivot     = new Vector2(0f, 0.5f);
+                    rt.sizeDelta = new Vector2(thickness, 0);
+                    rt.anchoredPosition = Vector2.zero;
+                    break;
+                case Edge.Right:
+                    rt.anchorMin = new Vector2(1, 0);
+                    rt.anchorMax = new Vector2(1, 1);
+                    rt.pivot     = new Vector2(1f, 0.5f);
+                    rt.sizeDelta = new Vector2(thickness, 0);
+                    rt.anchoredPosition = Vector2.zero;
+                    break;
+                case Edge.Top:
+                    rt.anchorMin = new Vector2(0, 1);
+                    rt.anchorMax = new Vector2(1, 1);
+                    rt.pivot     = new Vector2(0.5f, 1f);
+                    rt.sizeDelta = new Vector2(0, thickness);
+                    rt.anchoredPosition = Vector2.zero;
+                    break;
+                case Edge.Bottom:
+                    rt.anchorMin = new Vector2(0, 0);
+                    rt.anchorMax = new Vector2(1, 0);
+                    rt.pivot     = new Vector2(0.5f, 0f);
+                    rt.sizeDelta = new Vector2(0, thickness);
+                    rt.anchoredPosition = Vector2.zero;
+                    break;
+            }
+
+            var img = go.AddComponent<Image>();
+            img.color = IDLE_COLOR;
+            img.raycastTarget = true;
+
+            var dragger = go.AddComponent<TUIEdgeDragger>();
+            dragger.edge = edge;
+            dragger.targetRect = target;
+            dragger.canvasRect = canvas;
+            dragger.handleImage = img;
+
+            return dragger;
+        }
+
+        // ── Drag handlers ───────────────────────────────────────
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            handleImage.color = DRAG_COLOR;
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            Vector2 canvasSize = canvasRect.rect.size;
+            if (canvasSize.x <= 0 || canvasSize.y <= 0) return;
+
+            var canvas = canvasRect.GetComponent<Canvas>();
+            float scale = canvas != null ? canvas.scaleFactor : 1f;
+            Vector2 anchorDelta = new(
+                eventData.delta.x / (canvasSize.x * scale),
+                eventData.delta.y / (canvasSize.y * scale));
+
+            Vector2 aMin = targetRect.anchorMin;
+            Vector2 aMax = targetRect.anchorMax;
+
+            switch (edge)
+            {
+                case Edge.Left:
+                    aMin.x = Mathf.Clamp(aMin.x + anchorDelta.x, 0f, aMax.x - MIN_FRACTION);
+                    break;
+                case Edge.Right:
+                    aMax.x = Mathf.Clamp(aMax.x + anchorDelta.x, aMin.x + MIN_FRACTION, 1f);
+                    break;
+                case Edge.Top:
+                    aMax.y = Mathf.Clamp(aMax.y + anchorDelta.y, aMin.y + MIN_FRACTION, 1f);
+                    break;
+                case Edge.Bottom:
+                    aMin.y = Mathf.Clamp(aMin.y + anchorDelta.y, 0f, aMax.y - MIN_FRACTION);
+                    break;
+            }
+
+            targetRect.anchorMin = aMin;
+            targetRect.anchorMax = aMax;
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            handleImage.color = HOVER_COLOR;
+        }
+
+        // ── Hover feedback ──────────────────────────────────────
+
+        public void OnPointerEnter(PointerEventData eventData)
+        {
+            handleImage.color = HOVER_COLOR;
+        }
+
+        public void OnPointerExit(PointerEventData eventData)
+        {
+            handleImage.color = IDLE_COLOR;
+        }
+    }
+}

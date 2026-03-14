@@ -1,0 +1,23 @@
+{
+    "name": "CodeGamified.TUI.Tests",
+    "rootNamespace": "CodeGamified.TUI.Tests",
+    "references": [
+        "CodeGamified.TUI",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
