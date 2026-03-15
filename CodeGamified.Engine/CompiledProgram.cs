@@ -50,8 +50,8 @@ namespace CodeGamified.Engine
             for (int i = 0; i < Instructions.Length; i++)
             {
                 var inst = Instructions[i];
-                string addr = i.ToString("D4");
-                string asm = inst.ToAssembly().PadRight(30);
+                string addr = i.ToString("X3");
+                string asm = inst.ToAssembly().PadRight(24);
                 string tag = inst.Tag != 0 ? $"[tag:{inst.Tag}]" : "";
                 string comment = !string.IsNullOrEmpty(inst.GetComment()) ? $"; {inst.GetComment()}" : "";
                 sb.AppendLine($"{addr}: {asm} {tag,10} {comment}");
