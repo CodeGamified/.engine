@@ -155,6 +155,12 @@ namespace CodeGamified.Procedural
             var renderer = go.GetComponent<Renderer>();
             if (renderer == null) return;
 
+            if (shader == null)
+            {
+                Debug.LogError($"[ProceduralAssembler] Null shader for part '{go.name}', skipping material");
+                return;
+            }
+
             Color color = palette != null ? palette.Resolve(colorKey) : Color.gray;
 
             var mat = new Material(shader);
@@ -217,7 +223,12 @@ namespace CodeGamified.Procedural
                 if (s != null) return s;
             }
             Debug.LogWarning("[ProceduralAssembler] No render pipeline shader found, using fallback");
-            return Shader.Find("Unlit/Color");
+            var fallback = Shader.Find("Unlit/Color");
+            if (fallback != null) return fallback;
+
+            // Last resort — Hidden/InternalErrorShader is always present in Unity builds
+            Debug.LogError("[ProceduralAssembler] Unlit/Color also stripped; using error shader");
+            return Shader.Find("Hidden/InternalErrorShader");
         }
     }
 
