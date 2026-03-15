@@ -20,11 +20,11 @@ namespace CodeGamified.Procedural
     /// </summary>
     public static class ProceduralAssembler
     {
-        // Shader name fallback chain: URP → Built-in
+        // Shader name fallback chain: URP Unlit (few variants) → Built-in
         private static readonly string[] ShaderFallbacks = new[]
         {
-            "Universal Render Pipeline/Lit",
             "Universal Render Pipeline/Unlit",
+            "Universal Render Pipeline/Lit",
             "Standard"
         };
 
