@@ -74,7 +74,7 @@ namespace CodeGamified.Engine.Compiler
             {
                 var old = Instructions[instructionIndex];
                 Instructions[instructionIndex] = new Instruction(
-                    old.Op, targetAddress, old.Arg1, old.Arg2, old.SourceLine, old.Comment, old.Tag);
+                    old.Op, targetAddress, old.Arg1, old.Arg2, old.SourceLine, old.GetComment(), old.Tag);
             }
         }
 
