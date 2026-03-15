@@ -22,7 +22,7 @@ namespace CodeGamified.TUI
         Image handleImage;
 
         const float MIN_FRACTION = 0.15f;
-        static readonly Color IDLE_COLOR    = new(1f, 1f, 1f, 0.03f);
+        static readonly Color IDLE_COLOR    = new(1f, 1f, 1f, 0f);
         static readonly Color HOVER_COLOR   = new(0.4f, 0.8f, 1f, 0.25f);
         static readonly Color DRAG_COLOR    = new(0.4f, 0.8f, 1f, 0.45f);
 
@@ -42,7 +42,7 @@ namespace CodeGamified.TUI
         // ── Factory ─────────────────────────────────────────────
 
         public static TUIEdgeDragger Create(
-            RectTransform target, RectTransform canvas, Edge edge, float thickness = 8f)
+            RectTransform target, RectTransform canvas, Edge edge, float thickness = 16f)
         {
             var go = new GameObject($"Dragger_{edge}");
             go.transform.SetParent(target, false);

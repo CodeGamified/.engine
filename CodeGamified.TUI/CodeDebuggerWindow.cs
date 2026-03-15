@@ -171,9 +171,9 @@ namespace CodeGamified.TUI
                 TUIColors.Dimmed($"C:{cycle}"));
 
             // Separator
-            string sep1 = Separator(col2Start - 2);
-            string sep2 = Separator(col3Start - col2Start - 2);
-            string sep3 = Separator(totalChars - col3Start - 2);
+            string sep1 = Separator(col2Start - 5);
+            string sep2 = Separator(col3Start - col2Start - 5);
+            string sep3 = Separator(totalChars - col3Start - 5);
             Set3(r++, sep1, sep2, sep3);
 
             // Column headers

@@ -130,5 +130,15 @@ namespace CodeGamified.Quality
             QualityTier.High   => 1.0f,
             _                  => 1.0f
         };
+
+        // ═══════════════════════════════════════════════════════════════
+        // EMISSION / GLOW
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Whether emission/glow effects (bloom, point lights, emission materials)
+        /// should be enabled at this quality tier.
+        /// </summary>
+        public static bool EmissionEnabled(QualityTier tier) => tier != QualityTier.Low;
     }
 }
