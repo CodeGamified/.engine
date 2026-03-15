@@ -1,0 +1,16 @@
+{
+    "name": "CodeGamified.Bootstrap",
+    "rootNamespace": "CodeGamified.Bootstrap",
+    "references": [
+        "CodeGamified.Time"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
