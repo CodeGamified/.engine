@@ -417,6 +417,16 @@ namespace CodeGamified.TUI
             return slider;
         }
 
+        /// <summary>Reposition an existing slider overlay to new character coordinates.</summary>
+        public void RepositionSliderOverlay(int startChar, int widthChars = 22)
+        {
+            if (slider == null) return;
+            var rect = slider.GetComponent<RectTransform>();
+            if (rect == null) return;
+            rect.anchoredPosition = new Vector2(startChar * charWidth, 0);
+            rect.sizeDelta = new Vector2(widthChars * charWidth, 0);
+        }
+
         /// <summary>Show or hide the slider overlay.</summary>
         public void SetSliderVisible(bool visible)
         {
@@ -497,6 +507,20 @@ namespace CodeGamified.TUI
             }
         }
 
+        /// <summary>Reposition existing button overlays to updated character positions.</summary>
+        public void RepositionButtonOverlays(int[] startChars, int[] widthChars)
+        {
+            if (buttons == null) return;
+            for (int i = 0; i < buttons.Length && i < startChars.Length; i++)
+            {
+                if (buttons[i] == null) continue;
+                var rect = buttons[i].GetComponent<RectTransform>();
+                if (rect == null) continue;
+                rect.anchoredPosition = new Vector2(startChars[i] * charWidth, 0);
+                rect.sizeDelta = new Vector2(widthChars[i] * charWidth, 0);
+            }
+        }
+
         /// <summary>
         /// Create button overlays for the right column (dual-column mode).
         /// Character positions are relative to the right column start.
@@ -566,6 +590,20 @@ namespace CodeGamified.TUI
                             ? new Color(0.15f, 0.15f, 0.15f, 0.6f)
                             : new Color(0, 0, 0, 0.01f);
                 }
+            }
+        }
+
+        /// <summary>Reposition existing right-column button overlays to updated character positions.</summary>
+        public void RepositionRightButtonOverlays(int[] startChars, int[] widthChars)
+        {
+            if (rightButtons == null) return;
+            for (int i = 0; i < rightButtons.Length && i < startChars.Length; i++)
+            {
+                if (rightButtons[i] == null) continue;
+                var rect = rightButtons[i].GetComponent<RectTransform>();
+                if (rect == null) continue;
+                rect.anchoredPosition = new Vector2((dividerCharPos + startChars[i]) * charWidth, 0);
+                rect.sizeDelta = new Vector2(widthChars[i] * charWidth, 0);
             }
         }
 
