@@ -79,13 +79,14 @@ namespace CodeGamified.Quality
 
         /// <summary>
         /// Recommended trail segment count.
+        /// Ultra returns a very large value for persistent "light painting" trails.
         /// </summary>
         public static int TrailSegments(QualityTier tier) => tier switch
         {
-            QualityTier.Low    => 6,
-            QualityTier.Medium => 10,
-            QualityTier.High   => 16,
-            _                  => 24
+            QualityTier.Low    => 16,
+            QualityTier.Medium => 40,
+            QualityTier.High   => 120,
+            _                  => 8000  // Ultra: persistent full-match trail
         };
 
         /// <summary>

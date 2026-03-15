@@ -165,6 +165,13 @@ namespace CodeGamified.Procedural
             else
                 mat.color = color;
 
+            // Enable emission so Pulse / SetEmission / Bind(Emission) actually work
+            if (mat.HasProperty("_EmissionColor"))
+            {
+                mat.EnableKeyword("_EMISSION");
+                mat.SetColor("_EmissionColor", Color.black);
+            }
+
             renderer.material = mat;
         }
 

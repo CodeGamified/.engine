@@ -39,6 +39,7 @@ namespace CodeGamified.Procedural
 
         // ── Active animations ───────────────────────────────────
         private readonly List<PulseAnim> _pulses = new(8);
+        private readonly HashSet<string> _activePulseParts = new(8);
         private readonly List<ThrobAnim> _throbs = new(4);
         private readonly List<Binding> _bindings = new(8);
 
@@ -129,11 +130,12 @@ namespace CodeGamified.Procedural
         /// </summary>
         public void SetEmission(string partId, float intensity)
         {
-            if (!TryGetRendererAndBlock(partId, out var r, out var block)) return;
+            if (_renderers == null || !_renderers.TryGetValue(partId, out var r)) return;
             Color emColor = Color.white * intensity;
-            block.SetColor("_EmissiveColor", emColor);
-            block.SetColor("_EmissionColor", emColor); // URP fallback
-            r.SetPropertyBlock(block);
+            // Write directly to material instance — MaterialPropertyBlock emission
+            // doesn't produce HDR output in some URP renderer configurations.
+            r.material.SetColor("_EmissiveColor", emColor);
+            r.material.SetColor("_EmissionColor", emColor);
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -184,6 +186,7 @@ namespace CodeGamified.Procedural
 
         void UpdatePulses(float dt)
         {
+            _activePulseParts.Clear();
             for (int i = _pulses.Count - 1; i >= 0; i--)
             {
                 var p = _pulses[i];
@@ -191,18 +194,19 @@ namespace CodeGamified.Procedural
 
                 if (p.elapsed >= p.duration)
                 {
-                    SetEmission(p.partId, 0f);
+                    // Don't zero emission — let any binding resume naturally
                     _pulses.RemoveAt(i);
                     continue;
                 }
 
+                _activePulseParts.Add(p.partId);
+
                 float t = 1f - (p.elapsed / p.duration); // fade out
-                if (TryGetRendererAndBlock(p.partId, out var r, out var block))
+                if (_renderers != null && _renderers.TryGetValue(p.partId, out var r))
                 {
                     Color emColor = p.color * t;
-                    block.SetColor("_EmissiveColor", emColor);
-                    block.SetColor("_EmissionColor", emColor);
-                    r.SetPropertyBlock(block);
+                    r.material.SetColor("_EmissiveColor", emColor);
+                    r.material.SetColor("_EmissionColor", emColor);
                 }
                 _pulses[i] = p;
             }
@@ -245,7 +249,9 @@ namespace CodeGamified.Procedural
                 switch (b.channel)
                 {
                     case VisualChannel.Emission:
-                        SetEmission(b.partId, value);
+                        // Skip if a Pulse is currently driving this part's emission
+                        if (!_activePulseParts.Contains(b.partId))
+                            SetEmission(b.partId, value);
                         break;
 
                     case VisualChannel.ScaleY:
