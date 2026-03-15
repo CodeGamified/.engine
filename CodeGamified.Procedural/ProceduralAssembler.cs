@@ -217,6 +217,16 @@ namespace CodeGamified.Procedural
 
         static Shader FindFallbackShader()
         {
+            // Best option: grab the shader from the render pipeline's own default
+            // material — this is never stripped because URP references it internally.
+            var pipeline = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
+            if (pipeline != null)
+            {
+                var defaultMat = pipeline.defaultMaterial;
+                if (defaultMat != null && defaultMat.shader != null)
+                    return defaultMat.shader;
+            }
+
             for (int i = 0; i < ShaderFallbacks.Length; i++)
             {
                 var s = Shader.Find(ShaderFallbacks[i]);
@@ -226,7 +236,6 @@ namespace CodeGamified.Procedural
             var fallback = Shader.Find("Unlit/Color");
             if (fallback != null) return fallback;
 
-            // Last resort — Hidden/InternalErrorShader is always present in Unity builds
             Debug.LogError("[ProceduralAssembler] Unlit/Color also stripped; using error shader");
             return Shader.Find("Hidden/InternalErrorShader");
         }
