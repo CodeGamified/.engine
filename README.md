@@ -72,6 +72,7 @@ Games extend via interfaces/abstract classes — no forking required:
 | `IEntitySerializer<T>` | Persistence | Serialize game entities (programs, ships, configs) |
 | `PersistenceBehaviour` | Persistence | Autosave hooks, dirty tracking, sync triggers |
 | `IQualityResponsive` | Quality | React to quality tier changes (rebuild meshes, adjust LOD) |
+| `ISettingsListener` | Settings | React to any setting change (volume, font size, quality) |
 
 ## Assembly Definitions
 
@@ -84,6 +85,7 @@ Games extend via interfaces/abstract classes — no forking required:
 | `CodeGamified.Persistence` | — |
 | `CodeGamified.Persistence.Tests` | `CodeGamified.Persistence`, `nunit.framework` (Editor-only) |
 | `CodeGamified.Quality` | — |
+| `CodeGamified.Settings` | — |
 | `CodeGamified.Procedural` | — |
 
 See each module's own `README.md` for API details and code examples.
