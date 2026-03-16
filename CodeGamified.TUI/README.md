@@ -95,7 +95,7 @@ rows[3].SetBothTexts("Left content", "Right content");
 
 // Three-panel (code debugger)
 rows[3].SetThreePanelMode(true, col2Start, col3Start);
-rows[3].SetThreePanelTexts("SOURCE", "MACHINE CODE", "REGISTERS");
+rows[3].SetThreePanelTexts("SOURCE", "MACHINE", "REGISTERS");
 
 // Triple-column (status bar: left/center/right justified)
 rows[0].SetTripleColumnMode(true);
@@ -110,6 +110,59 @@ slider.onValueChanged.AddListener(v => OnAltitudeChanged(v));
 
 rows[3].CreateButtonOverlay("ACCEPT", charPos: 2, width: 10, onClick: AcceptContract);
 ```
+
+### 5. Glassmorphic Blur (zero-config, URP only)
+
+Acrylic frosted-glass effect on panel backgrounds. Auto-enabled on Ultra quality.
+
+**Zero setup required.** Having `CodeGamified.TUI.Blur` in your project does everything:
+
+1. **Editor** (`TUIBlurEditorSetup`, `[InitializeOnLoad]`):
+   - Creates material assets in `Assets/CodeGamified.TUI.Blur.Generated/`
+   - Adds `TUIBlurFeature` to the active URP renderer
+
+2. **Runtime** (`TUIBlurManager`, `[RuntimeInitializeOnLoadMethod]`):
+   - Loads the UI blur material from Resources
+   - Assigns it to `TerminalWindow.SharedBlurMaterial`
+   - Listens to `QualityBridge.OnTierChanged` — blur ON at Ultra, OFF otherwise
+
+All terminals (including ones created later) auto-pick-up the shared blur state.
+
+**Manual override** (per-terminal):
+
+```csharp
+// Force blur on/off for a specific terminal, regardless of quality tier:
+terminal.SetBlurEnabled(true);
+
+// Or assign a custom blur material via Inspector (overrides shared):
+// TerminalWindow → Blur Material field
+```
+
+**How it works:**
+
+- `TUIBlurFeature` (render feature) captures the opaque scene after rendering,
+  downsamples it, and runs 4 iterations of Kawase blur → `_TUIBlurTexture` global
+- `UIBackgroundBlur` (UI shader) samples `_TUIBlurTexture` at screen UV,
+  dims it (`_BlurBrightness`), composites with Image.color tint
+- When blur is disabled or no material exists, falls back to solid `(0,0,0,0.92)`
+
+**Tuning:**
+
+| Parameter | Where | Default | Effect |
+|-----------|-------|---------|--------|
+| Iterations | TUIBlurFeature (Inspector) | 4 | More = blurrier, ~0.07ms each |
+| Downsample | TUIBlurFeature (Inspector) | 2 | Higher = cheaper, softer |
+| `_BlurBrightness` | UIBackgroundBlur material | 0.12 | How much blur shows through |
+| `Image.color` | TerminalWindow | `(0,0,0,0.85)` | Tint RGB + overall opacity |
+
+**Assembly isolation:**
+
+| Assembly | Dependencies | Platform |
+|----------|-------------|----------|
+| `CodeGamified.TUI.Blur` | URP, TUI, Quality | All |
+| `CodeGamified.TUI.Blur.Editor` | TUI.Blur, URP | Editor only |
+
+Core TUI has zero URP dependency — blur is fully opt-in.
 
 ## Submodule Usage
 

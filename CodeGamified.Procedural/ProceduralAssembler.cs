@@ -171,11 +171,31 @@ namespace CodeGamified.Procedural
             else
                 mat.color = color;
 
-            // Enable emission so Pulse / SetEmission / Bind(Emission) actually work
+            // Configure transparent rendering when alpha < 1
+            if (color.a < 1f)
+            {
+                if (mat.HasProperty("_Surface"))
+                    mat.SetFloat("_Surface", 1f); // 0=Opaque, 1=Transparent
+                if (mat.HasProperty("_Blend"))
+                    mat.SetFloat("_Blend", 0f);   // 0=Alpha blend
+                mat.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                mat.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                mat.SetFloat("_ZWrite", 0f);
+                mat.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                mat.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+                mat.SetOverrideTag("RenderType", "Transparent");
+            }
+
+            // URP/Unlit outputs _BaseColor directly — no emission property needed.
+            // URP/Lit needs _EmissionColor for glow. Handle both.
             if (mat.HasProperty("_EmissionColor"))
             {
-                mat.EnableKeyword("_EMISSION");
-                mat.SetColor("_EmissionColor", Color.black);
+                float brightness = color.r * 0.299f + color.g * 0.587f + color.b * 0.114f;
+                if (brightness > 0.1f)
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", color);
+                }
             }
 
             renderer.material = mat;
@@ -217,8 +237,15 @@ namespace CodeGamified.Procedural
 
         static Shader FindFallbackShader()
         {
-            // Best option: grab the shader from the render pipeline's own default
-            // material — this is never stripped because URP references it internally.
+            // Prefer URP/Unlit for neon arcade visuals — flat color output,
+            // no PBR lighting needed. Bloom picks up bright values naturally.
+            for (int i = 0; i < ShaderFallbacks.Length; i++)
+            {
+                var s = Shader.Find(ShaderFallbacks[i]);
+                if (s != null) return s;
+            }
+
+            // Last resort: pipeline default material (may be URP/Lit)
             var pipeline = UnityEngine.Rendering.GraphicsSettings.currentRenderPipeline;
             if (pipeline != null)
             {
@@ -227,11 +254,6 @@ namespace CodeGamified.Procedural
                     return defaultMat.shader;
             }
 
-            for (int i = 0; i < ShaderFallbacks.Length; i++)
-            {
-                var s = Shader.Find(ShaderFallbacks[i]);
-                if (s != null) return s;
-            }
             Debug.LogWarning("[ProceduralAssembler] No render pipeline shader found, using fallback");
             var fallback = Shader.Find("Unlit/Color");
             if (fallback != null) return fallback;

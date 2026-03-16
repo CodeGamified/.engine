@@ -4,6 +4,7 @@
 //  Unified from BitNaughts CodeWindow + SeaRauber CodeTerminal
 // ═══════════════════════════════════════════════════════════
 using UnityEngine;
+using TMPro;
 using System.Collections;
 using System.Collections.Generic;
 
@@ -33,6 +34,12 @@ namespace CodeGamified.TUI
         protected int col3Start = 56;
         bool panelsEnabled;
 
+        // ── Column dragger state ────────────────────────────────
+        private TUIColumnDragger _col2Dragger;
+        private TUIColumnDragger _col3Dragger;
+        private float _col2Ratio = 1f / 3f;
+        private float _col3Ratio = 2f / 3f;
+
         // ── Scroll state ────────────────────────────────────────
         protected int scrollOffset;
         protected int cursorLine;
@@ -45,18 +52,58 @@ namespace CodeGamified.TUI
         {
             base.Awake();
             windowTitle = "CODE DEBUGGER";
+            windowSubtitle = "CODE DEBUGGER";
             totalRows = 20;
         }
 
         protected override void OnLayoutReady()
         {
-            col2Start = totalChars / 3;
-            col3Start = (totalChars * 2) / 3;
+            col2Start = Mathf.Clamp(Mathf.RoundToInt(totalChars * _col2Ratio), 4, totalChars - 8);
+            col3Start = Mathf.Clamp(Mathf.RoundToInt(totalChars * _col3Ratio), col2Start + 4, totalChars - 4);
+            _hoverColumnPositions = new[] { 0, col2Start, col3Start };
             if (panelsEnabled)
             {
                 panelsEnabled = false;
                 EnableThreePanels();
             }
+            SetupColumnDraggers();
+        }
+
+        private void SetupColumnDraggers()
+        {
+            if (_col2Dragger == null)
+            {
+                _col2Dragger = AddColumnDragger(col2Start, 4, col3Start - 4, OnCol2Dragged);
+                _col3Dragger = AddColumnDragger(col3Start, col2Start + 4, totalChars - 4, OnCol3Dragged);
+            }
+            else
+            {
+                float cw = rows.Count > 0 ? rows[0].CharWidth : 10f;
+                _col2Dragger.UpdateCharWidth(cw);
+                _col2Dragger.UpdatePosition(col2Start);
+                _col2Dragger.UpdateLimits(4, col3Start - 4);
+                _col3Dragger.UpdateCharWidth(cw);
+                _col3Dragger.UpdatePosition(col3Start);
+                _col3Dragger.UpdateLimits(col2Start + 4, totalChars - 4);
+            }
+        }
+
+        private void OnCol2Dragged(int newPos)
+        {
+            col2Start = newPos;
+            _col2Ratio = (float)newPos / totalChars;
+            _hoverColumnPositions = new[] { 0, col2Start, col3Start };
+            _col3Dragger?.UpdateLimits(newPos + 4, totalChars - 4);
+            ApplyThreePanelResize(col2Start, col3Start);
+        }
+
+        private void OnCol3Dragged(int newPos)
+        {
+            col3Start = newPos;
+            _col3Ratio = (float)newPos / totalChars;
+            _hoverColumnPositions = new[] { 0, col2Start, col3Start };
+            _col2Dragger?.UpdateLimits(4, newPos - 4);
+            ApplyThreePanelResize(col2Start, col3Start);
         }
 
         protected override void Update()
@@ -162,26 +209,21 @@ namespace CodeGamified.TUI
             int r = 0;
             Color32 accent = TUIGradient.Sample(0.3f);
 
-            // Header
+            // Header — per-column hover: label (default) vs dynamic info (hovered)
             string indexTag = GetIndexTag();
             string status = GetStatusString();
-            Set3(r++,
-                $"{TUIColors.Fg(accent, TUIGlyphs.DiamondFilled)} {TUIColors.Bold(GetProgramName())} {indexTag}",
-                status,
-                TUIColors.Dimmed($"C:{cycle}"));
-
-            // Separator
-            string sep1 = Separator(col2Start - 5);
-            string sep2 = Separator(col3Start - col2Start - 5);
-            string sep3 = Separator(totalChars - col3Start - 5);
-            Set3(r++, sep1, sep2, sep3);
-
-            // Column headers
-            Set3(r++,
-                TUIColors.Fg(accent, "SOURCE"),
-                TUIColors.Fg(accent, "MACHINE CODE"),
-                TUIColors.Fg(accent, "STATE"));
-            Set3(r++, sep1, sep2, sep3);
+            string col0 = IsColumnHovered(0)
+                ? $"{TUIColors.Fg(accent, TUIGlyphs.DiamondFilled)} {TUIColors.Bold(GetProgramName())} {indexTag}"
+                : TUIColors.Fg(accent, "SOURCE");
+            string col1 = IsColumnHovered(1)
+                ? status
+                : TUIColors.Fg(accent, "MACHINE");
+            string col2 = IsColumnHovered(2)
+                ? TUIColors.Dimmed($"C:{cycle}")
+                : TUIColors.Fg(accent, "STATE");
+            Row(r)?.SetAlignment(TextAlignmentOptions.Left); // space-padded centering needs Left
+            Row(r)?.SetThreePanelTextsCentered(col0, col1, col2);
+            r++;
 
             // Content
             var srcLines   = BuildSourceColumn(pc);
@@ -198,12 +240,6 @@ namespace CodeGamified.TUI
             }
 
             while (r <= ContentEnd) Set3(r++, "", "", "");
-
-            // Footer
-            Set3(RowSepBot, sep1, sep2, sep3);
-            Row(RowActions)?.SetThreePanelTexts(
-                TUIColors.Dimmed($"  {TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD} scroll  [ESC] close"),
-                "", "");
         }
 
         // ── Source-only fallback ────────────────────────────────
@@ -214,9 +250,10 @@ namespace CodeGamified.TUI
             ClearAllRows();
 
             Color32 accent = TUIGradient.Sample(0.3f);
+            string displayName = _isHovered ? GetProgramName() : windowTitle;
             SetRow(ROW_HEADER,
-                $"{TUIColors.Fg(accent, TUIGlyphs.DiamondFilled)} {TUIColors.Bold(GetProgramName())}");
-            SetRow(ROW_SEP_TOP, Separator());
+                $"{TUIColors.Fg(accent, TUIGlyphs.DiamondFilled)} {TUIColors.Bold(displayName)}");
+            Row(ROW_HEADER)?.SetAlignment(TextAlignmentOptions.Center);
 
             var srcLines = GetSourceLines();
             if (srcLines == null || srcLines.Length == 0)
@@ -240,10 +277,6 @@ namespace CodeGamified.TUI
                     }
                 }
             }
-
-            SetRow(RowSepBot, Separator());
-            SetRow(RowActions, TUIColors.Dimmed(
-                $"  {TUIGlyphs.ArrowU}/{TUIGlyphs.ArrowD} scroll  [ESC] close"));
         }
     }
 }

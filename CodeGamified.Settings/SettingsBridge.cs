@@ -39,7 +39,7 @@ namespace CodeGamified.Settings
         public const float  DEFAULT_MASTER_VOLUME = 1f;
         public const float  DEFAULT_MUSIC_VOLUME  = 0.7f;
         public const float  DEFAULT_SFX_VOLUME    = 1f;
-        public const float  DEFAULT_FONT_SIZE     = 13f;
+        public const float  DEFAULT_FONT_SIZE     = 16f;
         public const float  MIN_FONT_SIZE         = 8f;
         public const float  MAX_FONT_SIZE         = 24f;
 

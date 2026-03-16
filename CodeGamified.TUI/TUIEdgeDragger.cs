@@ -3,6 +3,7 @@
 //  Drag any edge to control what % of the screen the TUI uses
 //  Deduplicated: identical in BNUI and SRUI
 // ═══════════════════════════════════════════════════════════
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -21,13 +22,28 @@ namespace CodeGamified.TUI
         RectTransform canvasRect;
         Image handleImage;
 
-        const float MIN_FRACTION = 0.15f;
+        const float MIN_FRACTION = 0.05f;
         static readonly Color IDLE_COLOR    = new(1f, 1f, 1f, 0f);
         static readonly Color HOVER_COLOR   = new(0.4f, 0.8f, 1f, 0.25f);
         static readonly Color DRAG_COLOR    = new(0.4f, 0.8f, 1f, 0.45f);
 
         // Linked edges — when this dragger moves, propagate to these targets
         readonly List<(RectTransform rect, Edge edge)> _linkedEdges = new();
+
+        /// <summary>
+        /// Optional callback invoked after each drag update.
+        /// Receives the current anchor value for this edge.
+        /// </summary>
+        public Action<float> OnDragged { get; set; }
+
+        /// <summary>The edge this dragger controls.</summary>
+        public Edge DragEdge => edge;
+
+        /// <summary>The target RectTransform this dragger resizes.</summary>
+        public RectTransform TargetRect => targetRect;
+
+        /// <summary>The canvas RectTransform used for anchor calculations.</summary>
+        public RectTransform CanvasRect => canvasRect;
 
         /// <summary>
         /// Link another panel's edge to follow this dragger's movements.
@@ -140,6 +156,8 @@ namespace CodeGamified.TUI
                 foreach (var (linkedRect, linkedEdge) in _linkedEdges)
                     ApplyEdgeAnchorValue(linkedRect, linkedEdge, value);
             }
+
+            OnDragged?.Invoke(GetEdgeAnchorValue(edge, aMin, aMax));
         }
 
         public void OnEndDrag(PointerEventData eventData)

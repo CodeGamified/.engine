@@ -123,11 +123,15 @@ namespace CodeGamified.Quality
         /// <summary>
         /// Recommended center-line dash density multiplier for court-style games.
         /// </summary>
+        /// <remarks>
+        /// A value >= 100 signals "solid line" mode (no dashes).
+        /// </remarks>
         public static float CourtDashDensity(QualityTier tier) => tier switch
         {
             QualityTier.Low    => 0.5f,
             QualityTier.Medium => 0.75f,
             QualityTier.High   => 1.0f,
+            QualityTier.Ultra  => 100f, // solid bar
             _                  => 1.0f
         };
 

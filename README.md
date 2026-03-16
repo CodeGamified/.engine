@@ -234,6 +234,13 @@ rows[i].CreateButtonOverlay("OK", charPos: 2, width: 6, onClick: Accept);
 
 Also available: `CodeDebuggerWindow` (three-panel source/asm/state), `StatusBarBase` (triple-column).
 
+### Glassmorphic Blur (zero-config, URP only)
+
+Frosted-glass panel backgrounds. Lives in `TUI/Blur/` with its own asmdef (`CodeGamified.TUI.Blur`)
+so core TUI stays URP-agnostic. Zero setup required — editor auto-adds the render feature to the URP
+renderer, runtime auto-creates materials and toggles blur on Ultra quality via `QualityBridge`.
+See TUI README for tuning parameters.
+
 ---
 
 ## 5. Editor
@@ -513,6 +520,7 @@ Attach to assembled root. Two modes:
 | `CodeGamified.Engine` | — |
 | `CodeGamified.Time` | — |
 | `CodeGamified.TUI` | `Unity.TextMeshPro` |
+| `CodeGamified.TUI.Blur` | `Unity.RenderPipelines.Universal.Runtime`, `Unity.RenderPipelines.Core.Runtime` |
 | `CodeGamified.Editor` | `CodeGamified.Engine`, `CodeGamified.TUI`, `Unity.TextMeshPro` |
 | `CodeGamified.Persistence` | — |
 | `CodeGamified.Audio` | — (`noEngineReferences: true`) |

@@ -37,8 +37,14 @@ namespace CodeGamified.TUI
         bool dualColumnMode;
         bool tripleColumnMode;
         bool threePanelActive;
+        bool nPanelActive;
         int dividerCharPos = 24;
         int col1Chars, col2Chars, col3Chars;
+
+        // N-panel state (generalized multi-column)
+        TMP_Text[] nPanelTexts;
+        int[] nPanelCharPositions;
+        int[] nPanelCharWidths;
 
         // Overlay state
         Slider slider;
@@ -63,6 +69,7 @@ namespace CodeGamified.TUI
         public bool IsDualColumn => dualColumnMode;
         public bool IsTripleColumn => tripleColumnMode;
         public bool IsThreePanel => threePanelActive;
+        public bool IsNPanel => nPanelActive;
         public int DividerPosition => dividerCharPos;
 
         // ── Factory ─────────────────────────────────────────────
@@ -170,12 +177,67 @@ namespace CodeGamified.TUI
                 rightTextComponent.text = TruncateRichText(p3, col3Chars);
         }
 
+        /// <summary>Set three-panel texts centered within each column.</summary>
+        public void SetThreePanelTextsCentered(string p1, string p2, string p3)
+        {
+            SetThreePanelTexts(
+                CenterInColumn(p1, col1Chars),
+                CenterInColumn(p2, col2Chars),
+                CenterInColumn(p3, col3Chars));
+        }
+
+        /// <summary>Set N-panel texts centered within each column.</summary>
+        public void SetNPanelTextsCentered(string[] texts)
+        {
+            if (texts == null || texts.Length == 0) return;
+            var centered = new string[texts.Length];
+            for (int i = 0; i < texts.Length; i++)
+            {
+                int w = nPanelCharWidths != null && i < nPanelCharWidths.Length
+                    ? nPanelCharWidths[i] : GetTotalCharacters();
+                centered[i] = CenterInColumn(texts[i], w);
+            }
+            SetNPanelTexts(centered);
+        }
+
+        /// <summary>Set text alignment on the main text component (for single-column centering).</summary>
+        public void SetAlignment(TextAlignmentOptions alignment)
+        {
+            if (textComponent != null) textComponent.alignment = alignment;
+        }
+
+        static int VisibleLength(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return 0;
+            int count = 0;
+            bool inTag = false;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (text[i] == '<') { inTag = true; continue; }
+                if (text[i] == '>') { inTag = false; continue; }
+                if (!inTag) count++;
+            }
+            return count;
+        }
+
+        static string CenterInColumn(string text, int colWidth)
+        {
+            string trimmed = text?.TrimStart() ?? "";
+            int vis = VisibleLength(trimmed);
+            if (vis >= colWidth) return trimmed;
+            int pad = (colWidth - vis) / 2;
+            return new string(' ', pad) + trimmed;
+        }
+
         /// <summary>Clear all columns.</summary>
         public void Clear()
         {
             if (textComponent != null) textComponent.text = "";
             if (rightTextComponent != null) rightTextComponent.text = "";
             if (centerTextComponent != null) centerTextComponent.text = "";
+            if (nPanelTexts != null)
+                foreach (var t in nPanelTexts)
+                    if (t != null) t.text = "";
         }
 
         // ═══════════════════════════════════════════════════════════
@@ -335,6 +397,89 @@ namespace CodeGamified.TUI
             {
                 if (centerTextComponent != null) centerTextComponent.gameObject.SetActive(false);
                 if (rightTextComponent != null) rightTextComponent.gameObject.SetActive(false);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════
+        //  N-PANEL MODE (generalized multi-column)
+        // ═══════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Enable N fixed-position left-aligned panels.
+        /// colCharPositions[0] is always 0 (the main textComponent).
+        /// Panels 1..N-1 get their own TMP_Text at the specified char offsets.
+        /// </summary>
+        public void SetNPanelMode(bool enabled, int[] colCharPositions)
+        {
+            nPanelActive = enabled;
+            dualColumnMode = false;
+            tripleColumnMode = false;
+            threePanelActive = false;
+
+            // Disable legacy multi-column texts
+            if (centerTextComponent != null) centerTextComponent.gameObject.SetActive(false);
+            if (rightTextComponent != null) rightTextComponent.gameObject.SetActive(false);
+
+            if (!enabled)
+            {
+                if (nPanelTexts != null)
+                    foreach (var t in nPanelTexts)
+                        if (t != null) t.gameObject.SetActive(false);
+                return;
+            }
+
+            int n = colCharPositions.Length;
+            int total = GetTotalCharacters();
+
+            // Compute per-column char widths
+            nPanelCharPositions = colCharPositions;
+            nPanelCharWidths = new int[n];
+            for (int i = 0; i < n - 1; i++)
+                nPanelCharWidths[i] = colCharPositions[i + 1] - colCharPositions[i];
+            nPanelCharWidths[n - 1] = total - colCharPositions[n - 1];
+
+            // Create or reposition text components (panel 0 = main textComponent)
+            if (nPanelTexts == null || nPanelTexts.Length != n - 1)
+            {
+                // Destroy old if count changed
+                if (nPanelTexts != null)
+                    foreach (var t in nPanelTexts)
+                        if (t != null) Destroy(t.gameObject);
+
+                nPanelTexts = new TMP_Text[n - 1];
+                for (int i = 0; i < n - 1; i++)
+                    nPanelTexts[i] = CreatePanelText($"NPanel_{i + 1}", colCharPositions[i + 1]);
+            }
+            else
+            {
+                for (int i = 0; i < n - 1; i++)
+                {
+                    nPanelTexts[i].rectTransform.offsetMin =
+                        new Vector2(colCharPositions[i + 1] * charWidth, 0);
+                    nPanelTexts[i].gameObject.SetActive(true);
+                }
+            }
+        }
+
+        /// <summary>Set text for all N panels. Index 0 = leftmost.</summary>
+        public void SetNPanelTexts(string[] texts)
+        {
+            if (texts == null || texts.Length == 0) return;
+
+            // Panel 0 uses the main textComponent
+            if (textComponent != null)
+                textComponent.text = TruncateRichText(
+                    texts[0], nPanelCharWidths != null && nPanelCharWidths.Length > 0
+                        ? nPanelCharWidths[0] : GetTotalCharacters());
+
+            if (nPanelTexts == null) return;
+            for (int i = 0; i < nPanelTexts.Length && i + 1 < texts.Length; i++)
+            {
+                if (nPanelTexts[i] != null)
+                    nPanelTexts[i].text = TruncateRichText(
+                        texts[i + 1],
+                        nPanelCharWidths != null && i + 1 < nPanelCharWidths.Length
+                            ? nPanelCharWidths[i + 1] : 50);
             }
         }
 

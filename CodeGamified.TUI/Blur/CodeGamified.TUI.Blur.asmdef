@@ -1,0 +1,19 @@
+{
+    "name": "CodeGamified.TUI.Blur",
+    "rootNamespace": "CodeGamified.TUI.Blur",
+    "references": [
+        "Unity.RenderPipelines.Universal.Runtime",
+        "Unity.RenderPipelines.Core.Runtime",
+        "CodeGamified.TUI",
+        "CodeGamified.Quality"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
