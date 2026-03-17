@@ -57,7 +57,7 @@ namespace CodeGamified.Engine.Compiler
                     ctx.Emit(OpCode.HALT, comment: "end of program");
             }
 
-            return new CompiledProgram
+            var compiled = new CompiledProgram
             {
                 Name = programName,
                 SourceCode = source,
@@ -69,6 +69,12 @@ namespace CodeGamified.Engine.Compiler
                 DeclaredObjects = new Dictionary<string, string>(ctx.ObjectTypes),
                 Errors = ctx.Errors
             };
+
+            // Copy metadata (event handler addresses, etc.)
+            foreach (var kvp in ctx.Metadata)
+                compiled.Metadata[kvp.Key] = kvp.Value;
+
+            return compiled;
         }
 
         // ═══════════════════════════════════════════════════════════════
@@ -77,7 +83,8 @@ namespace CodeGamified.Engine.Compiler
 
         public AstNodes.ProgramNode Parse(string source, CompilerContext ctx = null)
         {
-            _lines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            var rawLines = source.Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+            _lines = JoinContinuationLines(rawLines, out _lineMap);
             _lineIndex = 0;
             _ctx = ctx;
 
@@ -86,7 +93,72 @@ namespace CodeGamified.Engine.Compiler
             return program;
         }
 
+        /// <summary>
+        /// Join lines with unclosed parentheses (Python implicit continuation).
+        /// Also supports explicit backslash continuation.
+        /// lineMap[i] = 1-based raw line number for joined line i.
+        /// </summary>
+        private static string[] JoinContinuationLines(string[] rawLines, out int[] lineMap)
+        {
+            var result = new List<string>();
+            var map = new List<int>();
+            int i = 0;
+            while (i < rawLines.Length)
+            {
+                int startLine = i + 1; // 1-based
+                string line = rawLines[i];
+                int depth = ParenDepth(line);
+
+                // Explicit backslash continuation
+                while (line.TrimEnd().EndsWith("\\") && i + 1 < rawLines.Length)
+                {
+                    line = line.TrimEnd();
+                    line = line.Substring(0, line.Length - 1) + " " + rawLines[++i].Trim();
+                    depth = ParenDepth(line);
+                }
+
+                // Implicit continuation: unclosed parens
+                while (depth > 0 && i + 1 < rawLines.Length)
+                {
+                    line = line + " " + rawLines[++i].Trim();
+                    depth = ParenDepth(line);
+                }
+
+                result.Add(line);
+                map.Add(startLine);
+                i++;
+            }
+            lineMap = map.ToArray();
+            return result.ToArray();
+        }
+
+        private static int ParenDepth(string line)
+        {
+            int depth = 0;
+            bool inString = false;
+            char strChar = '\0';
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (inString)
+                {
+                    if (c == strChar) inString = false;
+                    continue;
+                }
+                if (c == '\'' || c == '"') { inString = true; strChar = c; continue; }
+                if (c == '#') break; // rest is comment
+                if (c == '(' || c == '[') depth++;
+                else if (c == ')' || c == ']') depth--;
+            }
+            return depth;
+        }
+
         private CompilerContext _ctx;
+        private int[] _lineMap; // joined index → 1-based raw line number
+
+        private int RawLineNum(int joinedIndex) =>
+            _lineMap != null && joinedIndex >= 0 && joinedIndex < _lineMap.Length
+                ? _lineMap[joinedIndex] : joinedIndex + 1;
 
         private List<AstNodes.AstNode> ParseBlock(int expectedIndent)
         {
@@ -98,6 +170,9 @@ namespace CodeGamified.Engine.Compiler
                 int indent = GetIndent(line);
                 string trimmed = line.Trim();
 
+                // Strip inline comments (preserve string contents)
+                trimmed = StripInlineComment(trimmed);
+
                 if (string.IsNullOrEmpty(trimmed) || trimmed.StartsWith("#"))
                 {
                     _lineIndex++;
@@ -108,12 +183,12 @@ namespace CodeGamified.Engine.Compiler
 
                 if (indent > expectedIndent)
                 {
-                    Debug.LogWarning($"[Parser] Unexpected indent at line {_lineIndex + 1}");
+                    Debug.LogWarning($"[Parser] Unexpected indent at line {RawLineNum(_lineIndex)}");
                     _lineIndex++;
                     continue;
                 }
 
-                var stmt = ParseStatement(trimmed, _lineIndex + 1);
+                var stmt = ParseStatement(trimmed, RawLineNum(_lineIndex));
                 if (stmt != null) statements.Add(stmt);
 
                 _lineIndex++;
@@ -126,6 +201,10 @@ namespace CodeGamified.Engine.Compiler
                         wn.Body = body;
                     else if (stmt is AstNodes.ForNode fn)
                         fn.Body = body;
+                    else if (stmt is AstNodes.FuncDefNode fdn)
+                        fdn.Body = body;
+                    else if (stmt is AstNodes.EventHandlerNode ehn)
+                        ehn.Body = body;
                     else if (stmt is AstNodes.IfNode ifn)
                     {
                         ifn.ThenBody = body;
@@ -147,8 +226,8 @@ namespace CodeGamified.Engine.Compiler
                                 var elifBody = ParseBlock(expectedIndent + 4);
                                 var elifNode = new AstNodes.IfNode
                                 {
-                                    SourceLine = _lineIndex,
-                                    Condition = ParseExpression(elifMatch.Groups[1].Value.Trim(), _lineIndex),
+                                    SourceLine = RawLineNum(_lineIndex),
+                                    Condition = ParseExpression(elifMatch.Groups[1].Value.Trim(), RawLineNum(_lineIndex)),
                                     ThenBody = elifBody
                                 };
                                 // Chain as else of current if
@@ -186,6 +265,26 @@ namespace CodeGamified.Engine.Compiler
             return spaces;
         }
 
+        /// <summary>Strip inline # comments while respecting string literals.</summary>
+        private static string StripInlineComment(string line)
+        {
+            bool inString = false;
+            char strChar = '\0';
+            for (int i = 0; i < line.Length; i++)
+            {
+                char c = line[i];
+                if (inString)
+                {
+                    if (c == '\\' && i + 1 < line.Length) { i++; continue; }
+                    if (c == strChar) inString = false;
+                    continue;
+                }
+                if (c == '\'' || c == '"') { inString = true; strChar = c; continue; }
+                if (c == '#') return line.Substring(0, i).TrimEnd();
+            }
+            return line;
+        }
+
         private AstNodes.AstNode ParseStatement(string trimmed, int lineNum)
         {
             // while condition:
@@ -214,9 +313,20 @@ namespace CodeGamified.Engine.Compiler
                 };
                 string argsStr = forMatch.Groups[2].Value.Trim();
                 if (!string.IsNullOrEmpty(argsStr))
-                    foreach (var arg in argsStr.Split(','))
+                    foreach (var arg in SplitTopLevelArgs(argsStr))
                         node.RangeArgs.Add(ParseExpression(arg.Trim(), lineNum));
                 return node;
+            }
+
+            // def name():
+            var defMatch = Regex.Match(trimmed, @"^def\s+(\w+)\(\):$");
+            if (defMatch.Success)
+            {
+                return new AstNodes.FuncDefNode
+                {
+                    SourceLine = lineNum,
+                    FuncName = defMatch.Groups[1].Value
+                };
             }
 
             // if condition:
@@ -227,6 +337,17 @@ namespace CodeGamified.Engine.Compiler
                 {
                     SourceLine = lineNum,
                     Condition = ParseExpression(ifMatch.Groups[1].Value.Trim(), lineNum)
+                };
+            }
+
+            // Event handler block: hit_opp: / hit_wall: / hit_<name>: / serve:
+            var handlerMatch = Regex.Match(trimmed, @"^(hit_\w+|serve):$");
+            if (handlerMatch.Success)
+            {
+                return new AstNodes.EventHandlerNode
+                {
+                    SourceLine = lineNum,
+                    EventName = handlerMatch.Groups[1].Value
                 };
             }
 
@@ -247,7 +368,7 @@ namespace CodeGamified.Engine.Compiler
                     };
                     string argsStr = declMatch.Groups[4].Value.Trim();
                     if (!string.IsNullOrEmpty(argsStr))
-                        foreach (var arg in argsStr.Split(','))
+                        foreach (var arg in SplitTopLevelArgs(argsStr))
                             node.ConstructorArgs.Add(ParseExpression(arg.Trim(), lineNum));
                     return node;
                 }
@@ -265,7 +386,7 @@ namespace CodeGamified.Engine.Compiler
                 };
                 string argsStr = methodCallMatch.Groups[3].Value.Trim();
                 if (!string.IsNullOrEmpty(argsStr))
-                    foreach (var arg in argsStr.Split(','))
+                    foreach (var arg in SplitTopLevelArgs(argsStr))
                         node.Args.Add(ParseExpression(arg.Trim(), lineNum));
                 return node;
             }
@@ -309,7 +430,7 @@ namespace CodeGamified.Engine.Compiler
                 };
                 string argsStr = callMatch.Groups[2].Value.Trim();
                 if (!string.IsNullOrEmpty(argsStr))
-                    foreach (var arg in argsStr.Split(','))
+                    foreach (var arg in SplitTopLevelArgs(argsStr))
                         call.Args.Add(ParseExpression(arg.Trim(), lineNum));
                 return call;
             }
@@ -323,9 +444,29 @@ namespace CodeGamified.Engine.Compiler
             var args = new List<AstNodes.ExprNode>();
             argsStr = argsStr.Trim();
             if (!string.IsNullOrEmpty(argsStr))
-                foreach (var arg in argsStr.Split(','))
+                foreach (var arg in SplitTopLevelArgs(argsStr))
                     args.Add(ParseExpression(arg.Trim(), lineNum));
             return args;
+        }
+
+        private static List<string> SplitTopLevelArgs(string argsStr)
+        {
+            var result = new List<string>();
+            int depth = 0;
+            int start = 0;
+            for (int i = 0; i < argsStr.Length; i++)
+            {
+                char c = argsStr[i];
+                if (c == '(' || c == '[') depth++;
+                else if (c == ')' || c == ']') depth--;
+                else if (c == ',' && depth == 0)
+                {
+                    result.Add(argsStr.Substring(start, i - start));
+                    start = i + 1;
+                }
+            }
+            result.Add(argsStr.Substring(start));
+            return result;
         }
 
         private AstNodes.ExprNode ParseExpression(string expr, int lineNum)
@@ -392,7 +533,7 @@ namespace CodeGamified.Engine.Compiler
                 };
                 string argsStr = callExprMatch.Groups[2].Value.Trim();
                 if (!string.IsNullOrEmpty(argsStr))
-                    foreach (var arg in argsStr.Split(','))
+                    foreach (var arg in SplitTopLevelArgs(argsStr))
                         node.Args.Add(ParseExpression(arg.Trim(), lineNum));
                 return node;
             }
@@ -443,7 +584,7 @@ namespace CodeGamified.Engine.Compiler
                     if (op == "-" && i > 0)
                     {
                         char prev = expr[i - 1];
-                        if (prev == '(' || prev == ',' || prev == ' ') continue;
+                        if (prev == '(' || prev == ',') continue;
                     }
                     return i;
                 }

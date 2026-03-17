@@ -54,6 +54,12 @@ namespace CodeGamified.Engine
         /// <summary>Decrement register by 1. Args: [reg]</summary>
         DEC,
 
+        /// <summary>Min of two registers, store in first. Args: [destReg, srcReg]</summary>
+        MIN,
+
+        /// <summary>Max of two registers, store in first. Args: [destReg, srcReg]</summary>
+        MAX,
+
         // ═══════════════════════════════════════════════════════════════
         // COMPARISON & CONTROL FLOW
         // ═══════════════════════════════════════════════════════════════

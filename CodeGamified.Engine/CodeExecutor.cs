@@ -268,6 +268,14 @@ namespace CodeGamified.Engine
                 case OpCode.DEC:
                     State.SetRegister(inst.Arg0, State.GetRegister(inst.Arg0) - 1);
                     break;
+                case OpCode.MIN:
+                    State.SetRegister(inst.Arg0,
+                        Mathf.Min(State.GetRegister(inst.Arg0), State.GetRegister(inst.Arg1)));
+                    break;
+                case OpCode.MAX:
+                    State.SetRegister(inst.Arg0,
+                        Mathf.Max(State.GetRegister(inst.Arg0), State.GetRegister(inst.Arg1)));
+                    break;
 
                 // ── Comparison & control flow ──
                 case OpCode.CMP:

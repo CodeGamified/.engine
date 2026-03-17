@@ -182,7 +182,7 @@ namespace CodeGamified.Engine.Compiler
                     ctx.Extension.TryCompileCall(FunctionName, Args, ctx, SourceLine))
                     return;
 
-                // Engine built-in: wait
+                // Engine built-in: wait, min, max
                 switch (FunctionName.ToLower())
                 {
                     case "wait":
@@ -193,8 +193,31 @@ namespace CodeGamified.Engine.Compiler
                         }
                         break;
 
+                    case "min":
+                    case "max":
+                        if (Args.Count >= 2)
+                        {
+                            Args[0].Compile(ctx, 0);
+                            int tmpAddr = ctx.GetVariableAddress("_minmax_tmp");
+                            ctx.Emit(OpCode.STORE_MEM, 0, tmpAddr, sourceLine: SourceLine, comment: "save first arg");
+                            Args[1].Compile(ctx, 0);
+                            ctx.Emit(OpCode.MOV, 1, 0, sourceLine: SourceLine, comment: "R1 ← second arg");
+                            ctx.Emit(OpCode.LOAD_MEM, 0, tmpAddr, sourceLine: SourceLine, comment: "R0 ← first arg");
+                            var op = FunctionName.ToLower() == "min" ? OpCode.MIN : OpCode.MAX;
+                            ctx.Emit(op, 0, 1, sourceLine: SourceLine, comment: FunctionName.ToLower());
+                        }
+                        break;
+
                     default:
-                        Debug.LogWarning($"[Compiler] Unknown function: {FunctionName}");
+                        // Check user-defined functions
+                        if (ctx.FunctionAddresses.TryGetValue(FunctionName, out int funcAddr))
+                        {
+                            ctx.Emit(OpCode.CALL, funcAddr, sourceLine: SourceLine, comment: $"call {FunctionName}");
+                        }
+                        else
+                        {
+                            Debug.LogWarning($"[Compiler] Unknown function: {FunctionName}");
+                        }
                         break;
                 }
             }
@@ -264,6 +287,69 @@ namespace CodeGamified.Engine.Compiler
                 {
                     ctx.PatchJump(jumpToElse, ctx.CurrentAddress);
                 }
+            }
+        }
+
+        /// <summary>
+        /// User-defined function: def name(): body
+        /// Compiles as JMP over body, body, RET.
+        /// Stores address in ctx.FunctionAddresses.
+        /// </summary>
+        public class FuncDefNode : AstNode
+        {
+            public string FuncName;
+            public List<AstNode> Body = new List<AstNode>();
+
+            public override void Compile(CompilerContext ctx)
+            {
+                // JMP over the function body (main flow skips it)
+                int jumpOver = ctx.CurrentAddress;
+                ctx.Emit(OpCode.JMP, 0, sourceLine: SourceLine, comment: $"skip {FuncName}");
+
+                // Record function start address
+                int funcStart = ctx.CurrentAddress;
+                ctx.FunctionAddresses[FuncName] = funcStart;
+
+                // Compile body
+                foreach (var stmt in Body) stmt.Compile(ctx);
+
+                // Return to caller
+                ctx.Emit(OpCode.RET, sourceLine: SourceLine, comment: $"end {FuncName}");
+
+                // Patch the JMP to skip past function
+                ctx.PatchJump(jumpOver, ctx.CurrentAddress);
+            }
+        }
+
+        /// <summary>
+        /// Event handler block: hit_opp: / hit_wall: etc.
+        /// Compiles body as a labeled section jumped over in main flow.
+        /// Stores handler start address in ctx.Metadata["handler:{EventName}"].
+        /// Handler body ends with HALT (returns to idle).
+        /// </summary>
+        public class EventHandlerNode : AstNode
+        {
+            public string EventName;
+            public List<AstNode> Body = new List<AstNode>();
+
+            public override void Compile(CompilerContext ctx)
+            {
+                // JMP over the handler body (main flow skips it)
+                int jumpOver = ctx.CurrentAddress;
+                ctx.Emit(OpCode.JMP, 0, sourceLine: SourceLine, comment: $"skip {EventName} handler");
+
+                // Record handler start address
+                int handlerStart = ctx.CurrentAddress;
+                ctx.Metadata[$"handler:{EventName}"] = handlerStart;
+
+                // Compile body
+                foreach (var stmt in Body) stmt.Compile(ctx);
+
+                // End handler with HALT → returns to idle
+                ctx.Emit(OpCode.HALT, sourceLine: SourceLine, comment: $"end {EventName}");
+
+                // Patch the JMP to skip past handler
+                ctx.PatchJump(jumpOver, ctx.CurrentAddress);
             }
         }
 

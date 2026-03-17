@@ -14,6 +14,9 @@ namespace CodeGamified.Engine.Compiler
         public Dictionary<string, int> Variables = new Dictionary<string, int>();
         private int _nextVarAddress = 0;
 
+        /// <summary>User-defined function addresses (name → instruction index).</summary>
+        public Dictionary<string, int> FunctionAddresses = new Dictionary<string, int>();
+
         /// <summary>Float constant table — avoids *1000 int truncation.</summary>
         public List<float> FloatConstants = new List<float>();
 
