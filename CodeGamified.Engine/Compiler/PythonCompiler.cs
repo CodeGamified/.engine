@@ -195,7 +195,8 @@ namespace CodeGamified.Engine.Compiler
 
                 if (trimmed.EndsWith(":") && stmt != null)
                 {
-                    var body = ParseBlock(expectedIndent + 4);
+                    int bodyIndent = PeekNextIndent(expectedIndent);
+                    var body = ParseBlock(bodyIndent);
 
                     if (stmt is AstNodes.WhileNode wn)
                         wn.Body = body;
@@ -223,7 +224,7 @@ namespace CodeGamified.Engine.Compiler
                             if (elifMatch.Success)
                             {
                                 _lineIndex++;
-                                var elifBody = ParseBlock(expectedIndent + 4);
+                                var elifBody = ParseBlock(PeekNextIndent(expectedIndent));
                                 var elifNode = new AstNodes.IfNode
                                 {
                                     SourceLine = RawLineNum(_lineIndex),
@@ -240,7 +241,7 @@ namespace CodeGamified.Engine.Compiler
                             if (nextTrimmed == "else:")
                             {
                                 _lineIndex++;
-                                ifn.ElseBody = ParseBlock(expectedIndent + 4);
+                                ifn.ElseBody = ParseBlock(PeekNextIndent(expectedIndent));
                                 break;
                             }
 
@@ -263,6 +264,24 @@ namespace CodeGamified.Engine.Compiler
                 else break;
             }
             return spaces;
+        }
+
+        /// <summary>
+        /// Peek ahead to find the indentation of the next non-empty, non-comment line.
+        /// Used after a colon-ending statement to detect actual body indent (2, 4, etc.).
+        /// Falls back to parentIndent + 4 if no body line is found.
+        /// </summary>
+        private int PeekNextIndent(int parentIndent)
+        {
+            for (int i = _lineIndex; i < _lines.Length; i++)
+            {
+                string t = _lines[i].Trim();
+                if (string.IsNullOrEmpty(t) || t.StartsWith("#")) continue;
+                int ind = GetIndent(_lines[i]);
+                if (ind > parentIndent) return ind;
+                break;
+            }
+            return parentIndent + 4; // fallback
         }
 
         /// <summary>Strip inline # comments while respecting string literals.</summary>
