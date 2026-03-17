@@ -173,6 +173,7 @@ namespace CodeGamified.Engine
                 if (!_ioHandler.PreExecute(inst, State))
                 {
                     OnIOBlocked?.Invoke(inst);
+                    State.LastExecutedPC = State.PC;
                     State.PC++;
                     State.InstructionsExecuted++;
                     State.CycleCount++;
@@ -181,6 +182,7 @@ namespace CodeGamified.Engine
                 }
             }
 
+            State.LastExecutedPC = State.PC;
             State.LastInstruction = inst;
             State.PC++;
             State.InstructionsExecuted++;

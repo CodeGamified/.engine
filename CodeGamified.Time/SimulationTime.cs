@@ -112,7 +112,7 @@ namespace CodeGamified.Time
 
         private void HandleInput()
         {
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (Input.GetKeyDown(KeyCode.P))
                 TogglePause();
 
             if (Input.GetKeyDown(KeyCode.Equals) || Input.GetKeyDown(KeyCode.KeypadPlus))

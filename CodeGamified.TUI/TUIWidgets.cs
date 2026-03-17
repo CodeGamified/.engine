@@ -2,6 +2,7 @@
 //  TUI.Widgets — ProgressBar, Spinner, Divider, Box
 //  Python source: TUI.py § Widgets
 // ═══════════════════════════════════════════════════════════
+using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 
@@ -29,7 +30,7 @@ namespace CodeGamified.TUI
             for (int i = 0; i < length; i++)
             {
                 float t = length > 1 ? (float)i / (length - 1) : 0f;
-                Color32 c = TUIGradient.Sample(t);
+                Color32 c = TUIGradient.CyanMagenta(t);
                 string co = TUIColors.FgOpen(c.r, c.g, c.b);
 
                 if (i < filledFull)
@@ -37,7 +38,7 @@ namespace CodeGamified.TUI
                 else if (i == filledFull && eighth > 0)
                     sb.Append($"{co}{TUIGlyphs.BlockEighths[eighth]}{TUIColors.FgClose}");
                 else
-                    sb.Append(TUIColors.Dimmed(TUIGlyphs.BlockLight));
+                    sb.Append(' ');
             }
 
             string bar = sb.ToString();
@@ -45,7 +46,7 @@ namespace CodeGamified.TUI
             string dimClose = TUIColors.Dimmed("]");
 
             if (showPct)
-                return $"{dim}{bar}{dimClose} {(int)(progress * 100),3}%";
+                return $"{dim}{bar}{dimClose}{(int)(progress * 100),3}%";
             return $"{dim}{bar}{dimClose}";
         }
 
@@ -194,6 +195,55 @@ namespace CodeGamified.TUI
             var sb = new StringBuilder(s.Length * count);
             for (int i = 0; i < count; i++) sb.Append(s);
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Build TUI-formatted register/state lines.
+        /// Single source of truth for state display across all debugger panels.
+        /// </summary>
+        public static List<string> BuildStateLines(
+            float[] registers, int lastRegModified,
+            object flags, int pc, int stackCount,
+            Dictionary<string, int> nameToAddress,
+            Dictionary<string, float> memory)
+        {
+            var lines = new List<string>();
+
+            int regCount = registers != null ? registers.Length : 0;
+            for (int r = 0; r < regCount; r++)
+            {
+                bool modified = (r == lastRegModified);
+                string rName = $"R{r:D2}";
+                float val = registers[r];
+                string rVal = val < 0 ? $"{val:F2}" : $" {val:F2}";
+                if (modified)
+                    lines.Add(TUIColors.Fg(TUIColors.BrightGreen, $" {rName} {rVal}"));
+                else
+                    lines.Add($" {TUIColors.Dimmed(rName)} {rVal}");
+            }
+
+            lines.Add("");
+
+            lines.Add($" FG:  {flags}");
+            lines.Add($" PC:  {pc}");
+            lines.Add($" ST:  [{stackCount}]");
+
+            if (nameToAddress != null && nameToAddress.Count > 0)
+            {
+                lines.Add("");
+                lines.Add(TUIColors.Fg(TUIColors.BrightCyan, " VARS"));
+                foreach (var kvp in nameToAddress)
+                {
+                    string name = kvp.Key;
+                    string display = name.StartsWith("_mem")
+                        ? "M" + int.Parse(name.Substring(4)).ToString("D2")
+                        : name;
+                    float val = (memory != null && memory.ContainsKey(name)) ? memory[name] : 0;
+                    lines.Add($" {TUIColors.Dimmed(display)}  {val:F2}");
+                }
+            }
+
+            return lines;
         }
     }
 }

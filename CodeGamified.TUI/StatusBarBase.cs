@@ -82,7 +82,7 @@ namespace CodeGamified.TUI
 
             if (font == null)
             {
-                font = Resources.Load<TMP_FontAsset>("Fonts/Unifont SDF");
+                font = Resources.Load<TMP_FontAsset>("Unifont SDF");
             }
 
             if (font == null)

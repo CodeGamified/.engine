@@ -36,12 +36,12 @@ namespace CodeGamified.Settings
 
         // ── Defaults ────────────────────────────────────────────
         public const int    DEFAULT_QUALITY       = 3;      // Ultra
-        public const float  DEFAULT_MASTER_VOLUME = 1f;
-        public const float  DEFAULT_MUSIC_VOLUME  = 0.7f;
-        public const float  DEFAULT_SFX_VOLUME    = 1f;
-        public const float  DEFAULT_FONT_SIZE     = 16f;
+        public const float  DEFAULT_MASTER_VOLUME = 0.5f;
+        public const float  DEFAULT_MUSIC_VOLUME  = 0.25f;
+        public const float  DEFAULT_SFX_VOLUME    = 0.75f;
+        public const float  DEFAULT_FONT_SIZE     = 20f;
         public const float  MIN_FONT_SIZE         = 8f;
-        public const float  MAX_FONT_SIZE         = 24f;
+        public const float  MAX_FONT_SIZE         = 48f;
 
         // ── Current state ───────────────────────────────────────
         private static int   _qualityLevel  = DEFAULT_QUALITY;

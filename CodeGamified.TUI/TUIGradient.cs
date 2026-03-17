@@ -56,5 +56,19 @@ namespace CodeGamified.TUI
             loop[stops.Length] = stops[0];
             return loop;
         }
+
+        /// <summary>
+        /// Cyan → Magenta accent gradient at position t ∈ [0,1].
+        /// Used by ASCII art borders, progress bars, and title effects.
+        /// </summary>
+        public static Color32 CyanMagenta(float t)
+        {
+            t = Mathf.Clamp01(t);
+            return new Color32(
+                (byte)(TUIColors.BrightCyan.r + (TUIColors.BrightMagenta.r - TUIColors.BrightCyan.r) * t),
+                (byte)(TUIColors.BrightCyan.g + (TUIColors.BrightMagenta.g - TUIColors.BrightCyan.g) * t),
+                (byte)(TUIColors.BrightCyan.b + (TUIColors.BrightMagenta.b - TUIColors.BrightCyan.b) * t),
+                255);
+        }
     }
 }

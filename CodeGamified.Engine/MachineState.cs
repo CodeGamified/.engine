@@ -44,6 +44,7 @@ namespace CodeGamified.Engine
         // ═══════════════════════════════════════════════════════════════
 
         public Instruction? LastInstruction { get; set; }
+        public int LastExecutedPC { get; set; } = -1;
         public int LastMemoryAccess { get; set; } = -1;
         public bool LastMemoryWasWrite { get; set; }
         public int LastRegisterModified { get; set; } = -1;
@@ -189,6 +190,7 @@ namespace CodeGamified.Engine
             CycleCount = 0;
 
             LastInstruction = null;
+            LastExecutedPC = -1;
             LastMemoryAccess = -1;
             LastRegisterModified = -1;
             OutputEvents.Clear();
@@ -206,25 +208,30 @@ namespace CodeGamified.Engine
             for (int i = 0; i < REGISTER_COUNT; i++)
             {
                 string highlight = (i == LastRegisterModified) ? "►" : " ";
-                sb.AppendLine($"{highlight}R{i}: {Registers[i]:F2}");
+                float val = Registers[i];
+                string sign = val < 0 ? "" : " ";
+                sb.AppendLine($"{highlight}R{i:D2} {sign}{val:F2}");
             }
 
-            sb.AppendLine($"\nFLAGS: {Flags}");
-            sb.AppendLine($"PC: {PC}");
+            sb.AppendLine($"\nFG:  {Flags}");
+            sb.AppendLine($"PC:  {PC}");
 
-            sb.AppendLine("\n═══ STACK ═══");
+            sb.AppendLine("\n═══ ST ═══");
             if (Stack.Count == 0)
                 sb.AppendLine("  [empty]");
             else
                 foreach (var val in Stack)
                     sb.AppendLine($"  {val:F2}");
 
-            sb.AppendLine("\n═══ MEMORY ═══");
+            sb.AppendLine("\n═══ VARS ═══");
             foreach (var kvp in Memory)
             {
                 int addr = NameToAddress.TryGetValue(kvp.Key, out int a) ? a : -1;
                 string highlight = (addr == LastMemoryAccess) ? "►" : " ";
-                sb.AppendLine($"{highlight}{kvp.Key}: {kvp.Value:F2}");
+                string display = kvp.Key.StartsWith("_mem")
+                    ? "M" + int.Parse(kvp.Key.Substring(4)).ToString("D2")
+                    : kvp.Key;
+                sb.AppendLine($"{highlight}{display}  {kvp.Value:F2}");
             }
 
             return sb.ToString();

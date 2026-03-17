@@ -888,8 +888,6 @@ namespace CodeGamified.TUI
 
             var sb = new System.Text.StringBuilder(text.Length);
             int count = 0;
-            int cutAt = maxChars - 3;
-            if (cutAt < 1) cutAt = 1;
             inTag = false;
             for (int i = 0; i < text.Length; i++)
             {
@@ -897,8 +895,8 @@ namespace CodeGamified.TUI
                 if (c == '<') { inTag = true; sb.Append(c); continue; }
                 if (c == '>') { inTag = false; sb.Append(c); continue; }
                 if (inTag) { sb.Append(c); continue; }
-                if (count < cutAt) { sb.Append(c); count++; }
-                else if (count == cutAt) { sb.Append("..."); break; }
+                if (count < maxChars) { sb.Append(c); count++; }
+                else { sb.Append('\u2014'); break; } // em-dash at maxChars+1
             }
             return sb.ToString();
         }
