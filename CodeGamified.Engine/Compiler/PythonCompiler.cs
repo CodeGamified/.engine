@@ -340,8 +340,8 @@ namespace CodeGamified.Engine.Compiler
                 };
             }
 
-            // Event handler block: hit_opp: / hit_wall: / hit_<name>: / serve:
-            var handlerMatch = Regex.Match(trimmed, @"^(hit_\w+|serve):$");
+            // Event handler block: hit: / hit_opp: / hit_wall: / hit_<name>: / serve:
+            var handlerMatch = Regex.Match(trimmed, @"^(hit(?:_\w+)?|serve):$");
             if (handlerMatch.Success)
             {
                 return new AstNodes.EventHandlerNode

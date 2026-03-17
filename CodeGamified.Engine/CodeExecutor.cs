@@ -259,8 +259,16 @@ namespace CodeGamified.Engine
                     break;
                 case OpCode.MOD:
                     float mod = State.GetRegister(inst.Arg1);
-                    State.SetRegister(inst.Arg0,
-                        mod != 0 ? State.GetRegister(inst.Arg0) % mod : 0f);
+                    if (mod != 0)
+                    {
+                        float result = State.GetRegister(inst.Arg0) % mod;
+                        // Python semantics: result has same sign as divisor
+                        if (result != 0 && ((result < 0) != (mod < 0)))
+                            result += mod;
+                        State.SetRegister(inst.Arg0, result);
+                    }
+                    else
+                        State.SetRegister(inst.Arg0, 0f);
                     break;
                 case OpCode.INC:
                     State.SetRegister(inst.Arg0, State.GetRegister(inst.Arg0) + 1);

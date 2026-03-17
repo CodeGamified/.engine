@@ -34,6 +34,9 @@ namespace CodeGamified.TUI
         protected int col3Start = 56;
         bool panelsEnabled;
 
+        /// <summary>When true, render columns as STATE │ MACHINE │ SOURCE (mirrored).</summary>
+        protected bool _mirrorPanels;
+
         // ── Column dragger state ────────────────────────────────
         private TUIColumnDragger _col2Dragger;
         private TUIColumnDragger _col3Dragger;
@@ -130,6 +133,9 @@ namespace CodeGamified.TUI
 
         // ── Three-panel management ──────────────────────────────
 
+        /// <summary>Mirror panel order: STATE │ MACHINE │ SOURCE instead of SOURCE │ MACHINE │ STATE.</summary>
+        public void SetMirrorPanels(bool mirror) => _mirrorPanels = mirror;
+
         protected void EnableThreePanels()
         {
             if (panelsEnabled) return;
@@ -212,17 +218,20 @@ namespace CodeGamified.TUI
             // Header — per-column hover: label (default) vs dynamic info (hovered)
             string indexTag = GetIndexTag();
             string status = GetStatusString();
-            string col0 = IsColumnHovered(0)
+            string hdrSource = IsColumnHovered(_mirrorPanels ? 2 : 0)
                 ? $"{TUIColors.Fg(accent, TUIGlyphs.DiamondFilled)} {TUIColors.Bold(GetProgramName())} {indexTag}"
                 : TUIColors.Fg(accent, "SOURCE");
-            string col1 = IsColumnHovered(1)
+            string hdrMachine = IsColumnHovered(1)
                 ? status
                 : TUIColors.Fg(accent, "MACHINE");
-            string col2 = IsColumnHovered(2)
+            string hdrState = IsColumnHovered(_mirrorPanels ? 0 : 2)
                 ? TUIColors.Dimmed($"C:{cycle}")
                 : TUIColors.Fg(accent, "STATE");
             Row(r)?.SetAlignment(TextAlignmentOptions.Left); // space-padded centering needs Left
-            Row(r)?.SetThreePanelTextsCentered(col0, col1, col2);
+            if (_mirrorPanels)
+                Row(r)?.SetThreePanelTextsCentered(hdrState, hdrMachine, hdrSource);
+            else
+                Row(r)?.SetThreePanelTextsCentered(hdrSource, hdrMachine, hdrState);
             r++;
 
             // Content
@@ -233,10 +242,13 @@ namespace CodeGamified.TUI
             int maxLines = Mathf.Max(srcLines.Count, Mathf.Max(asmLines.Count, stateLines.Count));
             for (int i = 0; i < maxLines && r <= ContentEnd; i++)
             {
-                Set3(r++,
-                    i < srcLines.Count   ? srcLines[i]   : "",
-                    i < asmLines.Count   ? asmLines[i]   : "",
-                    i < stateLines.Count ? stateLines[i] : "");
+                string s = i < srcLines.Count   ? srcLines[i]   : "";
+                string m = i < asmLines.Count   ? asmLines[i]   : "";
+                string t = i < stateLines.Count ? stateLines[i] : "";
+                if (_mirrorPanels)
+                    Set3(r++, t, m, s);
+                else
+                    Set3(r++, s, m, t);
             }
 
             while (r <= ContentEnd) Set3(r++, "", "", "");

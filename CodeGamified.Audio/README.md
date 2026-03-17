@@ -135,10 +135,83 @@ editorAudio.MaxTimeScale = 100f;
 persistAudio.MaxTimeScale = float.MaxValue; // (already the default)
 ```
 
+### 4. Add an equalizer
+
+```csharp
+using CodeGamified.Audio;
+using CodeGamified.TUI;
+
+// ---- Implement provider (game layer) ----
+public class SpectrumProvider : MonoBehaviour, IEqualizerProvider
+{
+    public int BandCount => 8;
+    readonly float[] _spectrum = new float[256];
+
+    public bool GetBands(float[] bands)
+    {
+        AudioListener.GetSpectrumData(_spectrum, 0, FFTWindow.BlackmanHarris);
+        // Map 256-sample spectrum → 8 logarithmic bands
+        for (int b = 0; b < bands.Length; b++)
+        {
+            int lo = (int)Mathf.Pow(2, b);
+            int hi = (int)Mathf.Pow(2, b + 1);
+            float sum = 0f;
+            for (int s = lo; s < hi && s < _spectrum.Length; s++)
+                sum += _spectrum[s];
+            bands[b] = Mathf.Clamp01(sum * (b + 1) * 10f);
+        }
+        return true;
+    }
+}
+
+// ---- Wire in bootstrapper ----
+var eqHandler = EqualizerBridge.Create(spectrumProvider, () => Time.timeScale);
+
+// ---- Each frame ----
+eqHandler.Update(Time.deltaTime);
+```
+
+### 5. Render EQ in a TUI panel
+
+```csharp
+// Render to lines with customisable width × height
+string[] eqLines = TUIEqualizer.Render(
+    eqHandler.Equalizer.SmoothedBands,
+    eqHandler.Equalizer.PeakBands,
+    new TUIEqualizer.Config
+    {
+        Width      = 40,
+        Height     = 12,
+        Style      = TUIEqualizer.Style.Bars,   // or .Mirror
+        ShowBorder = true,
+        ShowPeaks  = true,
+        ShowLabels = true,
+        Title      = "EQ",
+    });
+
+// Display in a TerminalWindow, status bar, or any TMP text field
+foreach (string line in eqLines)
+    terminal.AppendLine(line);
+```
+
+### 6. Tune equalizer at runtime
+
+```csharp
+// Smoothing
+eqHandler.Equalizer.RiseSpeed     = 12f;  // snappier attack
+eqHandler.Equalizer.FallSpeed     = 4f;   // smooth decay
+eqHandler.Equalizer.PeakHoldTime  = 0.4f; // seconds before peak falls
+eqHandler.Equalizer.PeakFallSpeed = 1.5f; // peak descent rate
+
+// Gate — skip during extreme time warp
+eqHandler.MaxTimeScale = 100f;
+```
+
 ### Null providers
 
-`NullAudioProvider` and `NullHapticProvider` are silent no-ops — useful for
-tests, platforms without sound, or as defaults before the game configures audio.
+`NullAudioProvider`, `NullHapticProvider`, and `NullEqualizerProvider` are
+silent no-ops — useful for tests, platforms without sound, or as defaults
+before the game configures audio.
 
 ## Interfaces
 
@@ -146,6 +219,7 @@ tests, platforms without sound, or as defaults before the game configures audio.
 |-----------|---------|
 | `IAudioProvider` | Editor: `PlayTap`, `PlayInsert`, `PlayDelete`, `PlayUndo`, `PlayRedo`, `PlayCompileSuccess`, `PlayCompileError`, `PlayNavigate` │ Engine: `PlayInstructionStep`, `PlayOutput`, `PlayHalted`, `PlayIOBlocked`, `PlayWaitStateChanged` │ Time: `PlayWarpStart`, `PlayWarpCruise`, `PlayWarpDecelerate`, `PlayWarpArrived`, `PlayWarpCancelled`, `PlayWarpComplete` │ Persistence: `PlaySaveStarted`, `PlaySaveCompleted`, `PlaySyncCompleted` |
 | `IHapticProvider` | `TapLight`, `TapMedium`, `TapHeavy`, `Buzz(float)` |
+| `IEqualizerProvider` | `BandCount`, `GetBands(float[])` |
 
 ## Handler defaults
 
@@ -155,6 +229,63 @@ tests, platforms without sound, or as defaults before the game configures audio.
 | `EngineHandlers` | `10` | Only in step-through mode |
 | `TimeHandlers` | `float.MaxValue` | Warp sounds are the point |
 | `PersistenceHandlers` | `float.MaxValue` | Always audible |
+| `GatedEqualizer` | `float.MaxValue` | Always active |
+
+## Equalizer data model
+
+| Class | Purpose |
+|-------|---------|
+| `Equalizer` | Pure data — reads `IEqualizerProvider`, applies smoothing + peak hold/decay. No Unity dependency. |
+| `EqualizerBridge.GatedEqualizer` | Time-scale-gated wrapper (same pattern as AudioBridge/HapticBridge). |
+
+### Tuning knobs
+
+| Property | Default | Effect |
+|----------|---------|--------|
+| `RiseSpeed` | `12` | How fast bars snap to louder levels (units/sec) |
+| `FallSpeed` | `4` | How fast bars decay when quiet (units/sec) |
+| `PeakHoldTime` | `0.4s` | Seconds the peak marker lingers |
+| `PeakFallSpeed` | `1.5` | Speed at which peak marker descends |
+
+## TUI integration (`CodeGamified.TUI.TUIEqualizer`)
+
+The TUI module provides `TUIEqualizer` — a 2D frequency-band widget with
+customisable dimensions. It takes raw `float[]` arrays (no Audio dependency)
+so the dependency chain stays clean.
+
+### Render styles
+
+| Style | Description |
+|-------|-------------|
+| `Bars` | Vertical bars rising from the bottom with sub-character precision (▁▂▃▄▅▆▇█) |
+| `Mirror` | Symmetric bars growing outward from the centre line |
+
+### Config options
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `Width` | `int` | `32` | Total width in characters (including border) |
+| `Height` | `int` | `10` | Total height in rows (including border/labels) |
+| `Style` | `Style` | `Bars` | `Bars` or `Mirror` |
+| `ShowBorder` | `bool` | `true` | Box-drawing frame around the widget |
+| `ShowPeaks` | `bool` | `true` | Peak-hold markers above bars |
+| `ShowLabels` | `bool` | `false` | Band index labels at bottom |
+| `Title` | `string` | `null` | Optional text in top border |
+
+### Visual example (8 bands, 10×6, Bars)
+
+```
+┌──── EQ ────┐
+│ ▇          │
+│ █ ▅   ▃   │
+│ █ █ ▇ █ ▂ │
+│ █ █ █ █ █ │
+│ █ █ █ █ █ │
+└────────────┘
+```
+
+Colors use the **CyanMagenta** gradient across bands and the brand gradient
+for borders.
 
 ## Open questions
 
