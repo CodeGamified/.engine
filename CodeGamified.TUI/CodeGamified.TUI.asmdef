@@ -2,7 +2,8 @@
     "name": "CodeGamified.TUI",
     "rootNamespace": "CodeGamified.TUI",
     "references": [
-        "Unity.TextMeshPro"
+        "Unity.TextMeshPro",
+        "CodeGamified.Engine"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

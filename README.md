@@ -38,7 +38,7 @@ All other cross-module wiring happens in game code, not inside `.engine/`.
 ## Submodule Setup
 
 ```bash
-git submodule add <engine-repo-url> Assets/engine
+git submodule add <engine-repo-url> Assets/Engine
 ```
 
 All modules live in one submodule. Assembly definitions isolate compilation.

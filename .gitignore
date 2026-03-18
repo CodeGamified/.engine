@@ -1,1 +1,4 @@
-*.meta
+# Unity .meta files must be tracked so that GUIDs remain stable.
+# Serialized assets outside the submodule (e.g. ForwardRenderer.asset)
+# reference engine scripts by GUID — if .meta files regenerate with
+# new GUIDs on clone, those references silently break.

@@ -99,7 +99,7 @@ namespace CodeGamified.TUI
         /// </summary>
         public SliderBinding Slider(int row, int column,
             Func<float> get, Action<float> set,
-            int barOffset = 8, int barRightPad = 10, int minWidth = 4,
+            int barOffset = 9, int barRightPad = 9, int minWidth = 4,
             bool skipSync = false, float step = 0.1f, bool autoButtons = true)
         {
             var sb = new SliderBinding
@@ -240,19 +240,17 @@ namespace CodeGamified.TUI
                 sb.Slider = CreateSliderDirect(row.transform, row.CharWidth,
                     startChar, Mathf.Max(1, widthChars));
 
-                if (visible && widthChars >= sb.MinWidth)
+                // Always wire listener so sliders that start hidden still
+                // work when they become visible after resize / column drag.
+                if (sb.Get != null) sb.Slider.SetValueWithoutNotify(sb.Get());
+                if (sb.Set != null)
                 {
-                    if (sb.Get != null) sb.Slider.SetValueWithoutNotify(sb.Get());
-                    if (sb.Set != null)
-                    {
-                        var setter = sb.Set;
-                        sb.Slider.onValueChanged.AddListener(v => setter(v));
-                    }
+                    var setter = sb.Set;
+                    sb.Slider.onValueChanged.AddListener(v => setter(v));
                 }
-                else
-                {
+
+                if (!visible || widthChars < sb.MinWidth)
                     sb.Slider.gameObject.SetActive(false);
-                }
             }
 
             // ── Buttons (grouped by row for TerminalRow batch API) ──
@@ -367,7 +365,7 @@ namespace CodeGamified.TUI
             s.minValue = 0f;
             s.maxValue = 1f;
             s.wholeNumbers = false;
-            s.direction = Slider.Direction.LeftToRight;
+            s.direction = UnityEngine.UI.Slider.Direction.LeftToRight;
 
             // Fill area
             var fillArea = new GameObject("Fill Area");

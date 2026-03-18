@@ -22,7 +22,7 @@ namespace CodeGamified.TUI.Blur.Editor
     [InitializeOnLoad]
     static class TUIBlurEditorSetup
     {
-        const string GENERATED_ROOT       = "Assets/engine/CodeGamified.TUI.Blur.Generated";
+        const string GENERATED_ROOT       = "Assets/CodeGamified.TUI.Blur.Generated";
         const string RESOURCES_DIR        = GENERATED_ROOT + "/Resources";
         const string KAWASE_MAT_PATH      = GENERATED_ROOT + "/TUIKawaseBlur.mat";
         const string UI_MAT_PATH          = RESOURCES_DIR  + "/TUIUIBlur.mat";
