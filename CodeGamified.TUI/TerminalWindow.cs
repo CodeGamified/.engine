@@ -112,11 +112,21 @@ namespace CodeGamified.TUI
         // Column draggers for intra-panel resizing
         protected List<TUIColumnDragger> columnDraggers;
 
+        // Row draggers for intra-panel vertical section resizing
+        protected List<TUIRowDragger> rowDraggers;
+
         /// <summary>Get a column dragger by index (0-based). Returns null if not ready.</summary>
         public TUIColumnDragger GetColumnDragger(int index)
         {
             if (columnDraggers == null || index < 0 || index >= columnDraggers.Count) return null;
             return columnDraggers[index];
+        }
+
+        /// <summary>Get a row dragger by index (0-based). Returns null if not ready.</summary>
+        public TUIRowDragger GetRowDragger(int index)
+        {
+            if (rowDraggers == null || index < 0 || index >= rowDraggers.Count) return null;
+            return rowDraggers[index];
         }
 
         // Derived indices
@@ -206,7 +216,40 @@ namespace CodeGamified.TUI
             yield return new WaitForEndOfFrame();
             if (rows.Count > 0) totalChars = rows[0].GetTotalCharacters();
             CacheContainerSize();
+            FitRowsToHeight();
             OnLayoutReady();
+        }
+
+        /// <summary>
+        /// Compute the correct row count from the actual container height
+        /// and add/remove rows as needed. Called once during initial layout
+        /// so the panel uses all available space from the start.
+        /// </summary>
+        void FitRowsToHeight()
+        {
+            var rt = GetComponent<RectTransform>();
+            if (rt == null || rows.Count == 0) return;
+
+            float h = rt.rect.height;
+            float rowHeight = rows[0].RowHeight;
+            if (rowHeight <= 0f) return;
+
+            int newRowCount = Mathf.Max(6, Mathf.FloorToInt(h / rowHeight));
+            if (newRowCount == totalRows) return;
+
+            var font = contentText != null ? contentText.font : null;
+            float fontSize = contentText != null ? contentText.fontSize : 13f;
+            var parent = rows[0].transform.parent;
+
+            while (rows.Count < newRowCount)
+                rows.Add(TerminalRow.Create(parent, font, fontSize, rows.Count));
+
+            for (int i = newRowCount; i < rows.Count; i++)
+                rows[i].gameObject.SetActive(false);
+            for (int i = 0; i < newRowCount; i++)
+                rows[i].gameObject.SetActive(true);
+
+            totalRows = newRowCount;
         }
 
         void CacheContainerSize()
@@ -363,6 +406,20 @@ namespace CodeGamified.TUI
             var parentRT = GetComponent<RectTransform>();
             var dragger = TUIColumnDragger.Create(parentRT, cw, charPos, minPos, maxPos, onChanged);
             columnDraggers.Add(dragger);
+            return dragger;
+        }
+
+        /// <summary>
+        /// Create a draggable row divider at the given row position.
+        /// Call after layout is ready (in OnLayoutReady or later).
+        /// </summary>
+        protected TUIRowDragger AddRowDragger(int rowPos, int minRow, int maxRow, System.Action<int> onChanged)
+        {
+            if (rowDraggers == null) rowDraggers = new();
+            float rh = rows.Count > 0 ? rows[0].RowHeight : 18f;
+            var parentRT = GetComponent<RectTransform>();
+            var dragger = TUIRowDragger.Create(parentRT, rh, rowPos, minRow, maxRow, onChanged);
+            rowDraggers.Add(dragger);
             return dragger;
         }
 

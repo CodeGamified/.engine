@@ -416,9 +416,18 @@ namespace CodeGamified.TUI
         static void ComputeSliderLayout(SliderBinding sb, int[] colPositions, int totalChars,
             out int startChar, out int widthChars, out bool visible)
         {
-            int colStart = sb.Column < colPositions.Length ? colPositions[sb.Column] : 0;
-            int colEnd = sb.Column + 1 < colPositions.Length
-                ? colPositions[sb.Column + 1] : totalChars;
+            int colStart, colEnd;
+            if (colPositions == null || sb.Column < 0 || sb.Column >= colPositions.Length)
+            {
+                colStart = 0;
+                colEnd = totalChars;
+            }
+            else
+            {
+                colStart = colPositions[sb.Column];
+                colEnd = sb.Column + 1 < colPositions.Length
+                    ? colPositions[sb.Column + 1] : totalChars;
+            }
             int colWidth = colEnd - colStart;
 
             startChar = colStart + sb.BarOffset;
@@ -428,10 +437,18 @@ namespace CodeGamified.TUI
 
         static (int start, int width) ResolveButtonLayout(ButtonBinding bb, int[] colPositions, int totalChars)
         {
-            int colStart = bb.Column >= 0 && bb.Column < colPositions.Length
-                ? colPositions[bb.Column] : 0;
-            int colEnd = bb.Column + 1 < colPositions.Length
-                ? colPositions[bb.Column + 1] : totalChars;
+            int colStart, colEnd;
+            if (colPositions == null || bb.Column < 0 || bb.Column >= colPositions.Length)
+            {
+                colStart = 0;
+                colEnd = totalChars;
+            }
+            else
+            {
+                colStart = colPositions[bb.Column];
+                colEnd = bb.Column + 1 < colPositions.Length
+                    ? colPositions[bb.Column + 1] : totalChars;
+            }
             int colWidth = colEnd - colStart;
 
             if (bb.LayoutFunc != null)
