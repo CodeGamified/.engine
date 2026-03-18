@@ -119,8 +119,8 @@ Shader "CodeGamified/UIBackgroundBlur"
                 half4 color = half4(frosted * alpha, alpha);
 
                 #ifdef UNITY_UI_CLIP_RECT
-                float clip = UnityGet2DClipping(input.worldPosition.xy, _ClipRect);
-                color *= clip;
+                float clipFactor = UnityGet2DClipping(input.worldPosition.xy, _ClipRect);
+                color *= clipFactor;
                 #endif
 
                 #ifdef UNITY_UI_ALPHACLIP

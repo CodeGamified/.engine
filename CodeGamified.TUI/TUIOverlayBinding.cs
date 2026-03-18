@@ -99,7 +99,7 @@ namespace CodeGamified.TUI
         /// </summary>
         public SliderBinding Slider(int row, int column,
             Func<float> get, Action<float> set,
-            int barOffset = 9, int barRightPad = 9, int minWidth = 4,
+            int barOffset = 9, int barRightPad = 9, int minWidth = 1,
             bool skipSync = false, float step = 0.1f, bool autoButtons = true)
         {
             var sb = new SliderBinding
