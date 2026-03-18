@@ -45,6 +45,11 @@ namespace CodeGamified.TUI
             /// <summary>When true, skip Get() sync in Sync() — for sliders where
             /// dragging and sync would fight (e.g. font size that triggers rebuild).</summary>
             public bool SkipSync;
+            /// <summary>Normalized step for auto-generated [-][+] buttons (0-1 scale).</summary>
+            public float Step;
+            /// <summary>When true (default), auto-create [-] and [+] button overlays
+            /// that step the slider value by Step.</summary>
+            public bool AutoButtons;
 
             // Live instance
             internal Slider Slider;
@@ -74,6 +79,16 @@ namespace CodeGamified.TUI
         // Grouped buttons by row — needed for TerminalRow batch API
         Dictionary<int, List<ButtonBinding>> _buttonsByRow;
 
+        // ── Standard button layouts matching AdaptiveSliderRow ──
+
+        /// <summary>Layout for [-] button: colStart + 1, width 3.</summary>
+        public static readonly Func<int, int, (int start, int width)> MinusBtnLayout =
+            (cs, cw) => (cs + 1, 3);
+
+        /// <summary>Layout for [+] button: 3 chars from column end.</summary>
+        public static readonly Func<int, int, (int start, int width)> PlusBtnLayout =
+            (cs, cw) => { int off = Mathf.Max(5, cw - 3); return (cs + off, Mathf.Max(3, cw - off)); };
+
         // ═══════════════════════════════════════════════════════════
         //  REGISTRATION API
         // ═══════════════════════════════════════════════════════════
@@ -85,16 +100,30 @@ namespace CodeGamified.TUI
         public SliderBinding Slider(int row, int column,
             Func<float> get, Action<float> set,
             int barOffset = 8, int barRightPad = 10, int minWidth = 4,
-            bool skipSync = false)
+            bool skipSync = false, float step = 0.1f, bool autoButtons = true)
         {
             var sb = new SliderBinding
             {
                 Row = row, Column = column,
                 BarOffset = barOffset, BarRightPad = barRightPad,
                 MinWidth = minWidth,
-                Get = get, Set = set, SkipSync = skipSync
+                Get = get, Set = set, SkipSync = skipSync,
+                Step = step, AutoButtons = autoButtons
             };
             _sliderBindings.Add(sb);
+
+            // Auto-register [-] and [+] button overlays for this slider
+            if (autoButtons)
+            {
+                var binding = sb;
+                Button(row, column, MinusBtnLayout,
+                    _ => { if (binding.Get != null && binding.Set != null)
+                               binding.Set(Mathf.Clamp01(binding.Get() - binding.Step)); });
+                Button(row, column, PlusBtnLayout,
+                    _ => { if (binding.Get != null && binding.Set != null)
+                               binding.Set(Mathf.Clamp01(binding.Get() + binding.Step)); });
+            }
+
             return sb;
         }
 
