@@ -147,7 +147,21 @@ namespace CodeGamified.TUI.Blur.Editor
             if (rendererData.rendererFeatures != null)
             {
                 foreach (var f in rendererData.rendererFeatures)
-                    if (f is TUIBlurFeature) return;
+                {
+                    if (f is TUIBlurFeature existing)
+                    {
+                        // Repair broken material reference (e.g. after generated assets moved)
+                        if (existing.settings.blurMaterial == null && kawaseMat != null)
+                        {
+                            existing.settings.blurMaterial = kawaseMat;
+                            EditorUtility.SetDirty(existing);
+                            EditorUtility.SetDirty(rendererData);
+                            AssetDatabase.SaveAssets();
+                            Debug.Log("[TUI Blur] Repaired missing blurMaterial on existing render feature.");
+                        }
+                        return;
+                    }
+                }
             }
 
             // Create feature instance as sub-asset of the renderer data
