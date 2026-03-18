@@ -22,13 +22,20 @@ namespace CodeGamified.TUI
     /// │              │              │ STACK [2]    │
     /// └──────────────┴──────────────┴──────────────┘
     ///
-    /// Subclass and provide game-specific program data by overriding:
-    ///   - GetSourceLines(), GetProgramName()
-    ///   - BuildSourceColumn(), BuildAsmColumn(), BuildStateColumn()
-    ///   - HasLiveProgram, GetPC(), GetCycleCount()
+    /// Two usage modes:
+    ///   1. Override virtuals (legacy): GetSourceLines(), BuildSourceColumn(), etc.
+    ///   2. Data-source (preferred): call SetDataSource(IDebuggerDataSource)
+    ///      and the base class delegates all rendering to the data source.
     /// </summary>
     public abstract class CodeDebuggerWindow : TerminalWindow
     {
+        // ── Data source (preferred thin-adapter path) ────────────
+        private IDebuggerDataSource _dataSource;
+
+        /// <summary>Set a data source to drive all three panels.
+        /// When set, virtual methods delegate to the data source automatically.</summary>
+        public void SetDataSource(IDebuggerDataSource source) => _dataSource = source;
+
         // ── Column positions ────────────────────────────────────
         protected int col2Start = 28;
         protected int col3Start = 56;
@@ -157,37 +164,43 @@ namespace CodeGamified.TUI
             Row(r)?.SetThreePanelTexts(p1 ?? "", p2 ?? "", p3 ?? "");
         }
 
-        // ── Abstract data interface ─────────────────────────────
+        // ── Virtual data interface (override OR use SetDataSource) ─
 
         /// <summary>Source code lines to display.</summary>
-        protected abstract string[] GetSourceLines();
+        protected virtual string[] GetSourceLines()
+            => _dataSource?.SourceLines;
 
         /// <summary>Program/file name for the header.</summary>
-        protected abstract string GetProgramName();
+        protected virtual string GetProgramName()
+            => _dataSource?.ProgramName ?? "CODE";
 
         /// <summary>Whether a live executor is available for debug view.</summary>
-        protected abstract bool HasLiveProgram { get; }
+        protected virtual bool HasLiveProgram
+            => _dataSource?.HasLiveProgram ?? false;
 
         /// <summary>Current program counter (instruction index).</summary>
-        protected abstract int GetPC();
+        protected virtual int GetPC()
+            => _dataSource?.PC ?? 0;
 
         /// <summary>Current cycle count.</summary>
-        protected abstract long GetCycleCount();
+        protected virtual long GetCycleCount()
+            => _dataSource?.CycleCount ?? 0;
 
         /// <summary>Build source column lines with current PC highlighting.</summary>
-        protected abstract List<string> BuildSourceColumn(int pc);
+        protected virtual List<string> BuildSourceColumn(int pc)
+            => _dataSource?.BuildSourceLines(pc, scrollOffset, ContentRows) ?? new List<string>();
 
         /// <summary>Build assembly/machine code column.</summary>
-        protected abstract List<string> BuildAsmColumn(int pc);
+        protected virtual List<string> BuildAsmColumn(int pc)
+            => _dataSource?.BuildMachineLines(pc, ContentRows) ?? new List<string>();
 
         /// <summary>Build state/registers column.</summary>
-        protected abstract List<string> BuildStateColumn();
+        protected virtual List<string> BuildStateColumn()
+            => _dataSource?.BuildStateLines() ?? new List<string>();
 
         /// <summary>Status string (e.g., "RUN", "WAIT 1.2s", "HALTED").</summary>
         protected virtual string GetStatusString()
-        {
-            return TUIColors.Fg(TUIColors.BrightGreen, "RUN");
-        }
+            => _dataSource?.StatusString ?? TUIColors.Fg(TUIColors.BrightGreen, "RUN");
 
         /// <summary>Optional multi-program index info (e.g., "[2/5]").</summary>
         protected virtual string GetIndexTag() => "";

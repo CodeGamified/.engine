@@ -189,6 +189,32 @@ namespace CodeGamified.TUI
             return $"[{new string(fillChar, filled)}{new string(' ', length - filled)}]";
         }
 
+        /// <summary>
+        /// Adaptive slider row that adjusts layout to available column width.
+        /// Tiers:  w&lt;6: "- +"  |  w&lt;10: "[-] [+]"  |  w&lt;16: "[-] LBL [+]"
+        ///         w&lt;22: "[-] LBL VAL [+]"  |  w>=22: "[-] LBL BAR VAL [+]"
+        /// </summary>
+        public static string AdaptiveSliderRow(int colWidth, string label, float norm, string valueStr, bool showPct = false)
+        {
+            int w = colWidth - 1;
+            string minus = TUIColors.Fg(TUIColors.BrightCyan, "[-]");
+            string plus = TUIColors.Fg(TUIColors.BrightCyan, "[+]");
+
+            if (w < 6)
+                return $" {TUIColors.Fg(TUIColors.BrightCyan, "-")} {TUIColors.Fg(TUIColors.BrightCyan, "+")}";
+            if (w < 10)
+                return $" {minus} {plus}";
+            if (w < 16)
+                return $" {minus} {label} {plus}";
+
+            int overhead = 10 + label.Length + valueStr.Length;
+            if (w < overhead + 4)
+                return $" {minus} {label} {valueStr} {plus}";
+
+            int barLen = w - overhead;
+            return $" {minus} {label}{ProgressBar(Mathf.Clamp01(norm), barLen, showPct)}{valueStr} {plus}";
+        }
+
         static string Repeat(string s, int count)
         {
             if (count <= 0) return "";
