@@ -196,6 +196,39 @@ namespace CodeGamified.Engine.Compiler
                 if (trimmed.EndsWith(":") && stmt != null)
                 {
                     int bodyIndent = PeekNextIndent(expectedIndent);
+
+                    // match/case needs custom parsing — don't read a generic body
+                    if (stmt is AstNodes.MatchNode mn)
+                    {
+                        while (_lineIndex < _lines.Length)
+                        {
+                            string caseLine = _lines[_lineIndex];
+                            int caseIndent = GetIndent(caseLine);
+                            string caseTrimmed = StripInlineComment(caseLine.Trim());
+
+                            if (string.IsNullOrEmpty(caseTrimmed) || caseTrimmed.StartsWith("#"))
+                            { _lineIndex++; continue; }
+
+                            if (caseIndent < bodyIndent) break;
+
+                            var caseMatch = Regex.Match(caseTrimmed, @"^case\s+(.+):$");
+                            if (caseMatch.Success)
+                            {
+                                string caseVal = caseMatch.Groups[1].Value.Trim();
+                                var clause = new AstNodes.MatchCaseClause
+                                {
+                                    SourceLine = RawLineNum(_lineIndex),
+                                    Value = caseVal == "_" ? null : ParseExpression(caseVal, RawLineNum(_lineIndex))
+                                };
+                                _lineIndex++;
+                                clause.Body = ParseBlock(PeekNextIndent(caseIndent));
+                                mn.Cases.Add(clause);
+                            }
+                            else break;
+                        }
+                    }
+                    else
+                    {
                     var body = ParseBlock(bodyIndent);
 
                     if (stmt is AstNodes.WhileNode wn)
@@ -247,6 +280,7 @@ namespace CodeGamified.Engine.Compiler
 
                             break; // not elif/else, done
                         }
+                    }
                     }
                 }
             }
@@ -345,6 +379,17 @@ namespace CodeGamified.Engine.Compiler
                 {
                     SourceLine = lineNum,
                     FuncName = defMatch.Groups[1].Value
+                };
+            }
+
+            // match expr:
+            var matchStmt = Regex.Match(trimmed, @"^match\s+(.+):$");
+            if (matchStmt.Success)
+            {
+                return new AstNodes.MatchNode
+                {
+                    SourceLine = lineNum,
+                    Subject = ParseExpression(matchStmt.Groups[1].Value.Trim(), lineNum)
                 };
             }
 
