@@ -197,6 +197,7 @@ namespace CodeGamified.Engine.Compiler
                 {
                     int bodyIndent = PeekNextIndent(expectedIndent);
 
+                    // match/case needs custom parsing — don't read a generic body
                     if (stmt is AstNodes.MatchNode mn)
                     {
                         while (_lineIndex < _lines.Length)

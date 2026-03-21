@@ -359,11 +359,21 @@ namespace CodeGamified.Engine.Compiler
 
         public class MatchCaseClause
         {
-            public ExprNode Value;
+            public ExprNode Value; // null = wildcard "case _:"
             public List<AstNode> Body = new List<AstNode>();
             public int SourceLine;
         }
 
+        /// <summary>
+        /// match subject:
+        ///     case value1:
+        ///         body
+        ///     case value2:
+        ///         body
+        ///     case _:
+        ///         default body
+        /// Compiles as: evaluate subject once, then compare-and-branch for each case.
+        /// </summary>
         public class MatchNode : AstNode
         {
             public ExprNode Subject;
@@ -371,6 +381,7 @@ namespace CodeGamified.Engine.Compiler
 
             public override void Compile(CompilerContext ctx)
             {
+                // Evaluate subject → temp variable
                 Subject.Compile(ctx, 0);
                 int subjectAddr = ctx.GetVariableAddress("_match_subj");
                 ctx.Emit(OpCode.STORE_MEM, 0, subjectAddr, sourceLine: SourceLine, comment: "match subject");
@@ -378,6 +389,7 @@ namespace CodeGamified.Engine.Compiler
                 var exitJumps = new List<int>();
                 MatchCaseClause wildcard = null;
 
+                // Emit compare-and-branch for each valued case
                 for (int i = 0; i < Cases.Count; i++)
                 {
                     var c = Cases[i];
@@ -396,9 +408,11 @@ namespace CodeGamified.Engine.Compiler
                     ctx.PatchJump(skipBody, ctx.CurrentAddress);
                 }
 
+                // Wildcard / default case
                 if (wildcard != null)
                     foreach (var stmt in wildcard.Body) stmt.Compile(ctx);
 
+                // Patch all exit jumps to here
                 int endAddr = ctx.CurrentAddress;
                 foreach (int j in exitJumps)
                     ctx.PatchJump(j, endAddr);
