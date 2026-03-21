@@ -196,6 +196,38 @@ namespace CodeGamified.Engine.Compiler
                 if (trimmed.EndsWith(":") && stmt != null)
                 {
                     int bodyIndent = PeekNextIndent(expectedIndent);
+
+                    if (stmt is AstNodes.MatchNode mn)
+                    {
+                        while (_lineIndex < _lines.Length)
+                        {
+                            string caseLine = _lines[_lineIndex];
+                            int caseIndent = GetIndent(caseLine);
+                            string caseTrimmed = StripInlineComment(caseLine.Trim());
+
+                            if (string.IsNullOrEmpty(caseTrimmed) || caseTrimmed.StartsWith("#"))
+                            { _lineIndex++; continue; }
+
+                            if (caseIndent < bodyIndent) break;
+
+                            var caseMatch = Regex.Match(caseTrimmed, @"^case\s+(.+):$");
+                            if (caseMatch.Success)
+                            {
+                                string caseVal = caseMatch.Groups[1].Value.Trim();
+                                var clause = new AstNodes.MatchCaseClause
+                                {
+                                    SourceLine = RawLineNum(_lineIndex),
+                                    Value = caseVal == "_" ? null : ParseExpression(caseVal, RawLineNum(_lineIndex))
+                                };
+                                _lineIndex++;
+                                clause.Body = ParseBlock(PeekNextIndent(caseIndent));
+                                mn.Cases.Add(clause);
+                            }
+                            else break;
+                        }
+                    }
+                    else
+                    {
                     var body = ParseBlock(bodyIndent);
 
                     if (stmt is AstNodes.WhileNode wn)
@@ -247,6 +279,7 @@ namespace CodeGamified.Engine.Compiler
 
                             break; // not elif/else, done
                         }
+                    }
                     }
                 }
             }
@@ -348,6 +381,17 @@ namespace CodeGamified.Engine.Compiler
                 };
             }
 
+            // match expr:
+            var matchStmt = Regex.Match(trimmed, @"^match\s+(.+):$");
+            if (matchStmt.Success)
+            {
+                return new AstNodes.MatchNode
+                {
+                    SourceLine = lineNum,
+                    Subject = ParseExpression(matchStmt.Groups[1].Value.Trim(), lineNum)
+                };
+            }
+
             // if condition:
             var ifMatch = Regex.Match(trimmed, @"^if\s+(.+):$");
             if (ifMatch.Success)
@@ -359,8 +403,8 @@ namespace CodeGamified.Engine.Compiler
                 };
             }
 
-            // Event handler block: hit: / hit_opp: / hit_wall: / hit_<name>: / serve:
-            var handlerMatch = Regex.Match(trimmed, @"^(hit(?:_\w+)?|serve):$");
+            // Event handler block: hit: / hit_opp: / hit_wall: / hit_<name>: / serve: / shoot:
+            var handlerMatch = Regex.Match(trimmed, @"^(hit(?:_\w+)?|serve|shoot):$");
             if (handlerMatch.Success)
             {
                 return new AstNodes.EventHandlerNode
@@ -508,14 +552,61 @@ namespace CodeGamified.Engine.Compiler
             if (expr.StartsWith("(") && FindMatchingParen(expr, 0) == expr.Length - 1)
                 return ParseExpression(expr.Substring(1, expr.Length - 2), lineNum);
 
+            // Unary NOT: !expr or not expr
+            if (expr.StartsWith("!"))
+                return new AstNodes.NotNode
+                {
+                    SourceLine = lineNum,
+                    Operand = ParseExpression(expr.Substring(1), lineNum)
+                };
+            if (expr.StartsWith("not "))
+                return new AstNodes.NotNode
+                {
+                    SourceLine = lineNum,
+                    Operand = ParseExpression(expr.Substring(4), lineNum)
+                };
+
             if (float.TryParse(expr, System.Globalization.NumberStyles.Float,
                               System.Globalization.CultureInfo.InvariantCulture, out float num))
                 return new AstNodes.NumberNode { Value = num, SourceLine = lineNum };
 
             // Precedence layers (lowest to highest):
+            //   0. Logical: and, or
             //   1. Comparison: <=, >=, ==, !=, <, >
             //   2. Additive: +, -
             //   3. Multiplicative: *, /, %
+
+            // Layer 0: logical or (lowest precedence)
+            {
+                int idx = FindWordOperator(expr, "or");
+                if (idx > 0)
+                {
+                    string left = expr.Substring(0, idx).Trim();
+                    string right = expr.Substring(idx + 2).Trim();
+                    return new AstNodes.OrNode
+                    {
+                        SourceLine = lineNum,
+                        Left = ParseExpression(left, lineNum),
+                        Right = ParseExpression(right, lineNum)
+                    };
+                }
+            }
+
+            // Layer 0b: logical and
+            {
+                int idx = FindWordOperator(expr, "and");
+                if (idx > 0)
+                {
+                    string left = expr.Substring(0, idx).Trim();
+                    string right = expr.Substring(idx + 3).Trim();
+                    return new AstNodes.AndNode
+                    {
+                        SourceLine = lineNum,
+                        Left = ParseExpression(left, lineNum),
+                        Right = ParseExpression(right, lineNum)
+                    };
+                }
+            }
 
             // Layer 1: comparison (scan right-to-left, skip parens)
             foreach (string op in new[] { "<=", ">=", "==", "!=", "<", ">" })
@@ -620,6 +711,32 @@ namespace CodeGamified.Engine.Compiler
                 Right = ParseExpression(expr.Substring(idx + op.Length), lineNum),
                 Op = op
             };
+        }
+
+        /// <summary>
+        /// Find a word-boundary operator (and, or) scanning right-to-left,
+        /// skipping parenthesized regions. Requires spaces around the keyword.
+        /// </summary>
+        private static int FindWordOperator(string expr, string keyword)
+        {
+            int depth = 0;
+            int kLen = keyword.Length;
+            for (int i = expr.Length - kLen; i > 0; i--)
+            {
+                char c = expr[i];
+                if (c == ')') depth++;
+                else if (c == '(') depth--;
+                if (depth != 0) continue;
+
+                if (string.Compare(expr, i, keyword, 0, kLen, StringComparison.Ordinal) == 0)
+                {
+                    // Must be surrounded by non-word characters (spaces or parens)
+                    bool leftOk = i == 0 || !char.IsLetterOrDigit(expr[i - 1]) && expr[i - 1] != '_';
+                    bool rightOk = i + kLen >= expr.Length || !char.IsLetterOrDigit(expr[i + kLen]) && expr[i + kLen] != '_';
+                    if (leftOk && rightOk) return i;
+                }
+            }
+            return -1;
         }
     }
 }

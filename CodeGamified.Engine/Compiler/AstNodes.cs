@@ -354,6 +354,58 @@ namespace CodeGamified.Engine.Compiler
         }
 
         // ═══════════════════════════════════════════════════════════════
+        // MATCH/CASE (Python 3.10 switch)
+        // ═══════════════════════════════════════════════════════════════
+
+        public class MatchCaseClause
+        {
+            public ExprNode Value;
+            public List<AstNode> Body = new List<AstNode>();
+            public int SourceLine;
+        }
+
+        public class MatchNode : AstNode
+        {
+            public ExprNode Subject;
+            public List<MatchCaseClause> Cases = new List<MatchCaseClause>();
+
+            public override void Compile(CompilerContext ctx)
+            {
+                Subject.Compile(ctx, 0);
+                int subjectAddr = ctx.GetVariableAddress("_match_subj");
+                ctx.Emit(OpCode.STORE_MEM, 0, subjectAddr, sourceLine: SourceLine, comment: "match subject");
+
+                var exitJumps = new List<int>();
+                MatchCaseClause wildcard = null;
+
+                for (int i = 0; i < Cases.Count; i++)
+                {
+                    var c = Cases[i];
+                    if (c.Value == null) { wildcard = c; continue; }
+
+                    ctx.Emit(OpCode.LOAD_MEM, 0, subjectAddr, sourceLine: c.SourceLine, comment: "load match subject");
+                    c.Value.Compile(ctx, 1);
+                    ctx.Emit(OpCode.CMP, 0, 1, sourceLine: c.SourceLine, comment: "case compare");
+                    int skipBody = ctx.CurrentAddress;
+                    ctx.Emit(OpCode.JNE, 0, sourceLine: c.SourceLine, comment: "skip if no match");
+
+                    foreach (var stmt in c.Body) stmt.Compile(ctx);
+                    exitJumps.Add(ctx.CurrentAddress);
+                    ctx.Emit(OpCode.JMP, 0, sourceLine: c.SourceLine, comment: "exit match");
+
+                    ctx.PatchJump(skipBody, ctx.CurrentAddress);
+                }
+
+                if (wildcard != null)
+                    foreach (var stmt in wildcard.Body) stmt.Compile(ctx);
+
+                int endAddr = ctx.CurrentAddress;
+                foreach (int j in exitJumps)
+                    ctx.PatchJump(j, endAddr);
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
         // EXPRESSION NODES
         // ═══════════════════════════════════════════════════════════════
 
@@ -466,6 +518,59 @@ namespace CodeGamified.Engine.Compiler
                 int idx = ctx.AddFloatConstant(Value ? 1f : 0f);
                 ctx.Emit(OpCode.LOAD_FLOAT, targetReg, idx,
                     sourceLine: SourceLine, comment: Value ? "True" : "False");
+            }
+        }
+
+        /// <summary>Logical NOT: evaluates operand, produces 1 if zero, 0 otherwise.</summary>
+        public class NotNode : ExprNode
+        {
+            public ExprNode Operand;
+            public override void Compile(CompilerContext ctx, int targetReg)
+            {
+                Operand.Compile(ctx, targetReg);
+                int zeroIdx = ctx.AddFloatConstant(0f);
+                ctx.Emit(OpCode.LOAD_FLOAT, targetReg + 1, zeroIdx, sourceLine: SourceLine, comment: "load 0");
+                ctx.Emit(OpCode.CMP, targetReg, targetReg + 1, sourceLine: SourceLine, comment: "not: compare to 0");
+                // If operand == 0 → result is 1 (truthy)
+                ctx.Emit(OpCode.LOAD_FLOAT, targetReg, ctx.AddFloatConstant(1f), sourceLine: SourceLine, comment: "assume true (was 0)");
+                ctx.Emit(OpCode.JEQ, ctx.CurrentAddress + 2, sourceLine: SourceLine, comment: "skip if was 0");
+                ctx.Emit(OpCode.LOAD_FLOAT, targetReg, zeroIdx, sourceLine: SourceLine, comment: "was nonzero → false");
+            }
+        }
+
+        /// <summary>Logical AND: short-circuit — if left is 0, result is 0.</summary>
+        public class AndNode : ExprNode
+        {
+            public ExprNode Left;
+            public ExprNode Right;
+            public override void Compile(CompilerContext ctx, int targetReg)
+            {
+                Left.Compile(ctx, targetReg);
+                int zeroIdx = ctx.AddFloatConstant(0f);
+                ctx.Emit(OpCode.LOAD_FLOAT, targetReg + 1, zeroIdx, sourceLine: SourceLine, comment: "load 0");
+                ctx.Emit(OpCode.CMP, targetReg, targetReg + 1, sourceLine: SourceLine, comment: "and: test left");
+                int skipRight = ctx.CurrentAddress;
+                ctx.Emit(OpCode.JEQ, 0, sourceLine: SourceLine, comment: "short-circuit and");
+                Right.Compile(ctx, targetReg);
+                ctx.PatchJump(skipRight, ctx.CurrentAddress);
+            }
+        }
+
+        /// <summary>Logical OR: short-circuit — if left is nonzero, result is left.</summary>
+        public class OrNode : ExprNode
+        {
+            public ExprNode Left;
+            public ExprNode Right;
+            public override void Compile(CompilerContext ctx, int targetReg)
+            {
+                Left.Compile(ctx, targetReg);
+                int zeroIdx = ctx.AddFloatConstant(0f);
+                ctx.Emit(OpCode.LOAD_FLOAT, targetReg + 1, zeroIdx, sourceLine: SourceLine, comment: "load 0");
+                ctx.Emit(OpCode.CMP, targetReg, targetReg + 1, sourceLine: SourceLine, comment: "or: test left");
+                int skipRight = ctx.CurrentAddress;
+                ctx.Emit(OpCode.JNE, 0, sourceLine: SourceLine, comment: "short-circuit or");
+                Right.Compile(ctx, targetReg);
+                ctx.PatchJump(skipRight, ctx.CurrentAddress);
             }
         }
 
