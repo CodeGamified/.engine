@@ -20,15 +20,18 @@ This document is the **minimum context an agent needs** to integrate these modul
 ├── Quality/        Static QualityBridge — publish/subscribe quality tier changes
 ├── Settings/       Static SettingsBridge — PlayerPrefs persistence + listener broadcast
 ├── Procedural/     Blueprint → part list → assembled GameObject hierarchy + visual state
+├── Celestial/      Earth/Moon/Sun/Skybox rendering — day/night, atmosphere, quality-responsive
+├── WorldGraph/     Generic weighted node-edge map — pathfinding, traversal, relations, biomes
 ```
 
 ## Dependency Graph
 
 ```
-Audio, Camera, Quality, Settings, Procedural, Time, Engine  →  (no engine deps)
-Bootstrap  →  Time
-TUI        →  Unity.TextMeshPro
-Editor     →  Engine + TUI + Unity.TextMeshPro
+Audio, Camera, Quality, Settings, Procedural, Time, Engine, WorldGraph  →  (no engine deps)
+Bootstrap   →  Time
+Celestial   →  Time + Quality
+TUI         →  Unity.TextMeshPro
+Editor      →  Engine + TUI + Unity.TextMeshPro
 ```
 
 All other cross-module wiring happens in game code, not inside `.engine/`.
@@ -512,6 +515,134 @@ Attach to assembled root. Two modes:
 
 ---
 
+## 12. Celestial
+
+**Use directly:** `CelestialPlanet`, `CelestialMoon`, `CelestialSun`, `CelestialSkybox`
+
+Render pipeline–agnostic planet/moon/sun/skybox with day/night cycle, atmosphere,
+moonlight, quality-responsive meshes, and weather texture streaming.
+
+### One-Liner Config (via `CelestialPlanetConfig`)
+
+```csharp
+var earth = go.AddComponent<CelestialPlanet>();
+earth.ApplyConfig(CelestialPlanetConfig.Earth);   // all 30+ fields at once
+// or: earth.ApplyConfig(CelestialPlanetConfig.Mars);
+```
+
+### Bootstrap Example
+
+```csharp
+var skybox = FindOrCreate<CelestialSkybox>();
+var sun = new GameObject("Sun").AddComponent<CelestialSun>();
+
+var earth = new GameObject("Earth").AddComponent<CelestialPlanet>();
+earth.ApplyConfig(CelestialPlanetConfig.Earth);
+
+var moon = new GameObject("Moon").AddComponent<CelestialMoon>();
+moon.planet = earth;
+earth.moon = moon;
+```
+
+### Key Components
+
+| Component | Purpose |
+|---|---|
+| `CelestialPlanet` | Day/night, clouds, atmosphere, rotation via `SimulationTime` |
+| `CelestialMoon` | Orbital mechanics, phase, earthshine, tidal lock |
+| `CelestialSun` | Emissive sphere, optional directional light |
+| `CelestialSkybox` | Camera-following inverted sphere, dual-texture starfield |
+| `AtmosphereSystem` | Multi-layer concentric shells, quality-gated |
+| `CelestialPlanetConfig` | Config struct with `Earth` / `Mars` presets |
+| `CelestialMeshUtility` | Cached mesh factory (UV, inverted, low-poly spheres) |
+
+### Decoupled Orbit
+
+Moon orbit auto-advances via `SimulationTime`, but also exposes `AdvanceOrbit(float dt)`
+for manual time control — same pattern as WorldGraph's `ActiveTraversal.Advance(dt)`.
+
+### Custom Atmosphere Factory
+
+```csharp
+earth.AtmosphereFactory = go => go.AddComponent<MyCustomAtmosphere>();
+```
+
+### Shader Include
+
+All Celestial shaders share `CelestialCommon.hlsl` for `CelestialUnpackNormal` and
+`CELESTIAL_SUN_DIR` (elides per-pixel normalize — C# guarantees unit-length).
+
+See `CodeGamified.Celestial/README.md` for full shader table, quality tiers, and orbital math.
+
+---
+
+## 13. WorldGraph
+
+**Extend:** `WorldGraphNode`, `WorldGraphEdge`, `BiomeDefinition`
+
+Generic weighted node-edge map framework. Zero dependencies.
+
+### Build a Graph
+
+```csharp
+class Port : WorldGraphNode { public string Faction; }
+class Route : WorldGraphEdge
+{
+    public Route(int a, int b, float d) : base(a, b, d) { }
+}
+
+var graph = new WorldGraph<Port, Route>();
+graph.AddNode(new Port { Name = "Alpha", Position = new(0, 0) });
+graph.AddNode(new Port { Name = "Beta",  Position = new(10, 0) });
+graph.AddEdge(new Route(0, 1, 10f));
+```
+
+### Pathfinding
+
+```csharp
+var path = graph.FindPath(0, 1);       // Dijkstra on Distance-weighted edges
+float d  = WorldGraph<Port, Route>.PathDistance(path);
+```
+
+### Traversal
+
+```csharp
+var trip = new ActiveTraversal<Route>(0, 1, path) { Speed = 2f };
+trip.Advance(deltaTime * timeScale);   // cached CurrentEdgeId, dirty on Advance
+if (trip.IsComplete) { /* arrived */ }
+```
+
+### Pairwise Relations
+
+```csharp
+var relations = new RelationMatrix<Diplomacy>(Diplomacy.Neutral, Diplomacy.Self);
+relations.Set(playerA, playerB, Diplomacy.Hostile);
+```
+
+### Procedural Layout
+
+```csharp
+var graph = ArcMapGenerator.Generate<Port, Route>(
+    ArcMapConfig.Default,
+    (i, pos) => new Port { Name = $"Port {i}", Position = pos },
+    (a, b, dist) => new Route(a, b, dist));
+```
+
+### Biome Contract
+
+```csharp
+public class TropicalBiome : BiomeDefinition
+{
+    public TropicalBiome() : base((int)Biome.Tropical) { }
+    public override float GetAbundance(string id) => id == "wood" ? 1.5f : 1f;
+    public override string GetMaterial(string slot) => "palm_wood";
+}
+```
+
+See `CodeGamified.WorldGraph/README.md` for full API.
+
+---
+
 ## Assembly Definitions
 
 | Assembly | Dependencies |
@@ -528,6 +659,8 @@ Attach to assembled root. Two modes:
 | `CodeGamified.Quality` | — |
 | `CodeGamified.Settings` | — |
 | `CodeGamified.Procedural` | — |
+| `CodeGamified.Celestial` | `CodeGamified.Time`, `CodeGamified.Quality` |
+| `CodeGamified.WorldGraph` | — |
 
 Test assemblies: `*.Tests` — Editor-only, depend on parent + `nunit.framework`.
 
@@ -554,5 +687,15 @@ Test assemblies: `*.Tests` — Editor-only, depend on parent + `nunit.framework`
 | `IQualityResponsive` | Quality | React to quality tier changes |
 | `ISettingsListener` | Settings | React to any setting change |
 | `IProceduralBlueprint` | Procedural | Part list for assembly |
+| `CelestialPlanet` | Celestial | Planet textures, radius, rotation period |
+| `CelestialMoon` | Celestial | Orbit parameters, phase, earthshine |
+| `CelestialSun` | Celestial | Temperature, angular diameter, HDRP light config |
+| `AtmosphereLayerDataLoader` | Celestial | Custom atmosphere CSV or defaults |
+| `CelestialPlanetConfig` | Celestial | One-shot config struct with `Earth` / `Mars` presets |
+| `WorldGraph<TNode,TEdge>` | WorldGraph | Game-specific node/edge subclasses |
+| `ActiveTraversal<TEdge>` | WorldGraph | Entity travel along edges |
+| `BiomeDefinition` | WorldGraph | Resource abundance + material palette |
+| `RelationMatrix<TState>` | WorldGraph | Pairwise faction/diplomacy states |
+| `ArcMapGenerator` | WorldGraph | Semicircular arc layout via factory delegates |
 
 See each module's own `README.md` for full API details.

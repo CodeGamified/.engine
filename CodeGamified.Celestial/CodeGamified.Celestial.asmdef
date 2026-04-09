@@ -1,0 +1,17 @@
+{
+    "name": "CodeGamified.Celestial",
+    "rootNamespace": "CodeGamified.Celestial",
+    "references": [
+        "CodeGamified.Time",
+        "CodeGamified.Quality"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
