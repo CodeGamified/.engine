@@ -15,6 +15,10 @@ namespace CodeGamified.Camera
         Orbit,
 
         /// <summary>On-target first-person view. Syncs to target pitch/roll/yaw. Mouse look.</summary>
-        Deck
+        Deck,
+
+        /// <summary>Orbital view around a celestial body. Right-drag rotates, scroll zooms,
+        /// pitch range -89..89. No WASD pan. Click-to-switch targets via SetCelestialTargets().</summary>
+        Celestial
     }
 }

@@ -111,7 +111,9 @@ namespace CodeGamified.TUI
             textComponent.font = font;
             textComponent.fontSize = fontSize;
             textComponent.alignment = TextAlignmentOptions.Left;
+#pragma warning disable CS0618
             textComponent.enableWordWrapping = false;
+#pragma warning restore CS0618
             textComponent.overflowMode = TextOverflowModes.Overflow;
             textComponent.richText = true;
             textComponent.color = Color.white;
@@ -833,7 +835,9 @@ namespace CodeGamified.TUI
             tmp.font = textComponent.font;
             tmp.fontSize = textComponent.fontSize;
             tmp.alignment = align;
+#pragma warning disable CS0618
             tmp.enableWordWrapping = false;
+#pragma warning restore CS0618
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.richText = true;
             tmp.color = Color.white;
@@ -857,7 +861,9 @@ namespace CodeGamified.TUI
             tmp.font = textComponent.font;
             tmp.fontSize = textComponent.fontSize;
             tmp.alignment = TextAlignmentOptions.Left;
+#pragma warning disable CS0618
             tmp.enableWordWrapping = false;
+#pragma warning restore CS0618
             tmp.overflowMode = TextOverflowModes.Overflow;
             tmp.richText = true;
             tmp.color = Color.white;

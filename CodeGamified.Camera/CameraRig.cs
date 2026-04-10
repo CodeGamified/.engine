@@ -149,6 +149,23 @@ namespace CodeGamified.Camera
         private float _currentDistance;
         private float _targetDistance;
 
+        /// <summary>
+        /// Set the free-camera look target and recompute orbit parameters to match.
+        /// Call after AddComponent to prevent Start() from computing stale values.
+        /// </summary>
+        public void SetLookTarget(Vector3 target)
+        {
+            _lookTarget = target;
+            if (clampLookTargetY) _lookTarget.y = 0f;
+
+            Vector3 offset = transform.position - _lookTarget;
+            _currentDistance = offset.magnitude;
+            _targetDistance = _currentDistance;
+            _currentPitch = Mathf.Asin(offset.y / Mathf.Max(_currentDistance, 0.01f)) * Mathf.Rad2Deg;
+            _currentYaw = Mathf.Atan2(offset.x, offset.z) * Mathf.Rad2Deg;
+            _currentPitch = Mathf.Clamp(_currentPitch, minPitch, maxPitch);
+        }
+
         // Orbit target
         private Transform _orbitTarget;
         private float _orbitTargetRadius = 1f;
@@ -173,6 +190,51 @@ namespace CodeGamified.Camera
 
         // Time scale provider (optional — set via SetTimeScaleProvider)
         private System.Func<float> _getTimeScale;
+
+        // ═══════════════════════════════════════════════════════════════
+        // CELESTIAL MODE STATE
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>Registered celestial targets. Key = string name, value = (transform, radius).</summary>
+        private System.Collections.Generic.Dictionary<string, (Transform transform, float radius)> _celestialTargets = new();
+        private string _celestialActiveKey;
+        private Vector3 _celestialCenter;         // smoothed orbit center
+        private Vector3 _celestialTargetCenter;   // target orbit center (live-updated)
+        private float _celestialDistance;
+        private float _celestialTargetDistance;
+        private float _celestialMinDist;
+        private float _celestialMaxDist;
+        private float _celestialYaw;
+        private float _celestialPitch = 30f;
+        private bool _celestialTransitioning;
+
+        [Header("Celestial Mode")]
+        [Tooltip("Orbit rotation speed in Celestial mode (degrees/sec)")]
+        public float celestialRotateSpeed = 200f;
+
+        [Tooltip("Zoom speed in Celestial mode")]
+        public float celestialZoomSpeed = 20f;
+
+        [Tooltip("How fast orbital center lerps to new target")]
+        public float celestialTransitionSpeed = 5f;
+
+        [Tooltip("How fast zoom lerps in Celestial mode")]
+        public float celestialZoomLerpSpeed = 8f;
+
+        [Tooltip("Auto-zoom distance = target radius × this multiplier")]
+        public float celestialAutoZoomMultiplier = 3f;
+
+        [Tooltip("Min zoom = target radius × this multiplier")]
+        public float celestialMinZoomClearance = 1.1f;
+
+        /// <summary>Fired in Celestial mode when the focused target changes. Args: (targetName, transform).</summary>
+        public event System.Action<string, Transform> OnCelestialTargetChanged;
+
+        /// <summary>Fired when zooming in past surface threshold in Celestial mode. Game should transition to ground view.</summary>
+        public event System.Action OnCelestialZoomIn;
+
+        /// <summary>Current celestial target name (null if not in Celestial mode).</summary>
+        public string CelestialActiveTarget => _mode == CameraMode.Celestial ? _celestialActiveKey : null;
 
         // ═══════════════════════════════════════════════════════════════
         // EVENTS
@@ -229,8 +291,9 @@ namespace CodeGamified.Camera
 
         private void LateUpdate()
         {
-            // Escape → Free
+            // Escape → Free (not in Celestial — Celestial handles its own Escape)
             if (enableEscapeToFree && _mode != CameraMode.Free
+                && _mode != CameraMode.Celestial
                 && Input.GetKeyDown(KeyCode.Escape))
             {
                 ClearTarget();
@@ -250,9 +313,10 @@ namespace CodeGamified.Camera
 
             switch (_mode)
             {
-                case CameraMode.Free:  UpdateFreeMode();  break;
-                case CameraMode.Orbit: UpdateOrbitMode(); break;
-                case CameraMode.Deck:  UpdateDeckMode();  break;
+                case CameraMode.Free:      UpdateFreeMode();      break;
+                case CameraMode.Orbit:     UpdateOrbitMode();     break;
+                case CameraMode.Deck:      UpdateDeckMode();      break;
+                case CameraMode.Celestial: UpdateCelestialMode(); break;
             }
 
             // Smooth zoom lerp (_currentDistance → _targetDistance)
@@ -393,6 +457,186 @@ namespace CodeGamified.Camera
                 transform.position = Vector3.Lerp(transform.position, targetPos, lerpSpeed);
                 transform.rotation = Quaternion.Slerp(transform.rotation, lookRot, lerpSpeed);
             }
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CELESTIAL MODE — orbital camera with multi-target switching
+        // ═══════════════════════════════════════════════════════════════
+
+        private void UpdateCelestialMode()
+        {
+            // Escape: if not on primary target → switch to primary;
+            //         if on primary → fire OnCelestialZoomIn (game handles exit)
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                // Primary target = first registered, or game sets via FocusCelestialTarget
+                string primary = null;
+                foreach (var key in _celestialTargets.Keys) { primary = key; break; }
+                if (_celestialActiveKey != primary && primary != null)
+                    FocusCelestialTarget(primary);
+                else
+                    OnCelestialZoomIn?.Invoke();
+                return;
+            }
+
+            // Right-drag to orbit
+            if (Input.GetMouseButton(1))
+            {
+                _celestialYaw += Input.GetAxis("Mouse X") * celestialRotateSpeed * Time.deltaTime;
+                _celestialPitch -= Input.GetAxis("Mouse Y") * celestialRotateSpeed * Time.deltaTime;
+                _celestialPitch = Mathf.Clamp(_celestialPitch, -89f, 89f);
+            }
+
+            // Scroll to zoom
+            float scroll = Input.GetAxis("Mouse ScrollWheel");
+            if (Mathf.Abs(scroll) > 0.001f)
+            {
+                _celestialTargetDistance -= scroll * celestialZoomSpeed * (_celestialTargetDistance * 0.1f);
+                _celestialTargetDistance = Mathf.Clamp(_celestialTargetDistance, _celestialMinDist, _celestialMaxDist);
+
+                // Zooming in past surface threshold on the primary target → fire event
+                if (_celestialTargets.TryGetValue(_celestialActiveKey, out var tgt)
+                    && _celestialTargetDistance <= tgt.radius * 1.2f)
+                {
+                    OnCelestialZoomIn?.Invoke();
+                    return;
+                }
+            }
+
+            // Click to switch target
+            if (Input.GetMouseButtonDown(0))
+            {
+                var ray = UnityEngine.Camera.main.ScreenPointToRay(Input.mousePosition);
+                if (Physics.Raycast(ray, out RaycastHit hit, 100000f))
+                {
+                    foreach (var kv in _celestialTargets)
+                    {
+                        var t = kv.Value.transform;
+                        if (t != null && (hit.transform == t || hit.transform.IsChildOf(t)))
+                        {
+                            FocusCelestialTarget(kv.Key);
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Update live target position
+            if (_celestialTargets.TryGetValue(_celestialActiveKey, out var active) && active.transform != null)
+                _celestialTargetCenter = active.transform.position;
+
+            // Smooth center transition
+            if (_celestialTransitioning)
+            {
+                _celestialCenter = Vector3.Lerp(_celestialCenter, _celestialTargetCenter,
+                    Time.deltaTime * celestialTransitionSpeed);
+                if (Vector3.Distance(_celestialCenter, _celestialTargetCenter) < 0.01f)
+                {
+                    _celestialCenter = _celestialTargetCenter;
+                    _celestialTransitioning = false;
+                }
+            }
+            else
+            {
+                _celestialCenter = _celestialTargetCenter;
+            }
+
+            // Smooth zoom
+            _celestialDistance = Mathf.Lerp(_celestialDistance, _celestialTargetDistance,
+                Time.deltaTime * celestialZoomLerpSpeed);
+
+            // Apply orbit position
+            Quaternion rot = Quaternion.Euler(_celestialPitch, _celestialYaw, 0f);
+            Vector3 offset = rot * new Vector3(0f, 0f, -_celestialDistance);
+            transform.position = _celestialCenter + offset;
+            transform.LookAt(_celestialCenter);
+        }
+
+        // ═══════════════════════════════════════════════════════════════
+        // CELESTIAL PUBLIC API
+        // ═══════════════════════════════════════════════════════════════
+
+        /// <summary>
+        /// Register celestial targets for click-to-focus switching.
+        /// Call before or after EnterCelestialMode(). Targets persist until cleared.
+        ///
+        /// Example:
+        ///   rig.SetCelestialTargets(new Dictionary&lt;string, (Transform, float)&gt; {
+        ///     { "Planet", (planet.transform, 80f) },
+        ///     { "Moon",   (moon.transform, 22f) },
+        ///     { "Sun",    (sun.transform, 50f) },
+        ///   });
+        /// </summary>
+        public void SetCelestialTargets(System.Collections.Generic.Dictionary<string, (Transform transform, float radius)> targets)
+        {
+            _celestialTargets = targets ?? new();
+        }
+
+        /// <summary>
+        /// Enter Celestial mode, focusing on the named target.
+        /// Computes initial yaw/pitch from the current camera position.
+        /// </summary>
+        public void EnterCelestialMode(string focusTarget = null)
+        {
+            CameraMode old = _mode;
+            _mode = CameraMode.Celestial;
+
+            // Pick target
+            if (focusTarget == null)
+                foreach (var key in _celestialTargets.Keys) { focusTarget = key; break; }
+
+            _celestialActiveKey = focusTarget;
+
+            if (_celestialTargets.TryGetValue(focusTarget, out var tgt) && tgt.transform != null)
+            {
+                _celestialTargetCenter = tgt.transform.position;
+                _celestialCenter = _celestialTargetCenter;
+                _celestialMinDist = tgt.radius * celestialMinZoomClearance;
+                _celestialMaxDist = Mathf.Max(500f, tgt.radius * 20f);
+                _celestialTargetDistance = tgt.radius * celestialAutoZoomMultiplier;
+                _celestialDistance = Vector3.Distance(transform.position, _celestialTargetCenter);
+
+                // Initial yaw/pitch from camera position
+                Vector3 dir = (transform.position - _celestialTargetCenter).normalized;
+                _celestialYaw = Mathf.Atan2(dir.x, dir.z) * Mathf.Rad2Deg;
+                _celestialPitch = Mathf.Asin(Mathf.Clamp(dir.y, -1f, 1f)) * Mathf.Rad2Deg;
+            }
+
+            _celestialTransitioning = false;
+
+            if (old != _mode) OnModeChanged?.Invoke(old, _mode);
+            OnCelestialTargetChanged?.Invoke(_celestialActiveKey, tgt.transform);
+        }
+
+        /// <summary>Switch focus to a different registered celestial target by name.</summary>
+        public void FocusCelestialTarget(string targetName)
+        {
+            if (!_celestialTargets.TryGetValue(targetName, out var tgt)) return;
+            _celestialActiveKey = targetName;
+            _celestialTargetCenter = tgt.transform.position;
+            _celestialMinDist = tgt.radius * celestialMinZoomClearance;
+            _celestialMaxDist = Mathf.Max(500f, tgt.radius * 20f);
+            _celestialTargetDistance = tgt.radius * celestialAutoZoomMultiplier;
+            _celestialTransitioning = true;
+            OnCelestialTargetChanged?.Invoke(targetName, tgt.transform);
+        }
+
+        /// <summary>
+        /// Orient the celestial camera to face a specific surface point on the active target.
+        /// The camera orbits so that the given local-space direction is centered in view.
+        /// Call after EnterCelestialMode().
+        /// </summary>
+        /// <param name="surfaceLocalDir">Direction from target center to the surface point (normalized).</param>
+        public void FaceCelestialSurfacePoint(Vector3 surfaceLocalDir)
+        {
+            if (_mode != CameraMode.Celestial) return;
+            // Camera should be on the OPPOSITE side of the surface point (looking at it)
+            // yaw/pitch encode where the camera IS, so we put it on the same side as the point
+            // (since the camera looks AT center, being on the same side as the point means the point is between camera and center — visible)
+            // Actually: camera at direction D looks at center. The visible hemisphere is the one facing D.
+            // So to see surfaceLocalDir, the camera direction FROM center should equal surfaceLocalDir.
+            _celestialYaw = Mathf.Atan2(surfaceLocalDir.x, surfaceLocalDir.z) * Mathf.Rad2Deg;
+            _celestialPitch = Mathf.Asin(Mathf.Clamp(surfaceLocalDir.y, -1f, 1f)) * Mathf.Rad2Deg;
         }
 
         // ═══════════════════════════════════════════════════════════════

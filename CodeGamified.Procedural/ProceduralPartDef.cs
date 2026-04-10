@@ -72,6 +72,12 @@ namespace CodeGamified.Procedural
         /// <summary>Layer name override (e.g. "Ignore Raycast"). Null = default.</summary>
         public string Layer;
 
+        /// <summary>When true, emit a single double-sided quad instead of a full box.</summary>
+        public bool IsQuad;
+
+        /// <summary>Optional texture path for atlas/material lookup. Null = use ColorKey only.</summary>
+        public string TexturePath;
+
         // ═══════════════════════════════════════════════════════════════
         // CONVENIENCE CONSTRUCTORS
         // ═══════════════════════════════════════════════════════════════
@@ -90,6 +96,8 @@ namespace CodeGamified.Procedural
             Collider = ColliderMode.None;
             ParentId = null;
             Layer = null;
+            IsQuad = false;
+            TexturePath = null;
         }
 
         /// <summary>Full constructor.</summary>
@@ -108,6 +116,8 @@ namespace CodeGamified.Procedural
             Collider = collider;
             ParentId = parentId;
             Layer = null;
+            IsQuad = false;
+            TexturePath = null;
         }
     }
 }

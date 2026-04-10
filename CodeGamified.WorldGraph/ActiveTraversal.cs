@@ -21,6 +21,9 @@ namespace CodeGamified.WorldGraph
         public float DistanceTraveled { get; set; }
         public float Speed { get; set; } = 1f;
 
+        /// <summary>Persistent per-traversal speed multiplier (hull bonus, curse, etc). Stacks with speedMod param.</summary>
+        public float SpeedModifier { get; set; } = 1f;
+
         // Cached edge lookup — dirty on Advance()
         int _cachedEdgeId = -1;
         bool _edgeDirty = true;
@@ -60,10 +63,10 @@ namespace CodeGamified.WorldGraph
             TotalDistance = d;
         }
 
-        /// <summary>Advance travel by dt seconds, with optional speed modifier.</summary>
+        /// <summary>Advance travel by dt seconds, with optional external speed modifier.</summary>
         public void Advance(float dt, float speedMod = 1f)
         {
-            DistanceTraveled += Speed * speedMod * dt;
+            DistanceTraveled += Speed * SpeedModifier * speedMod * dt;
             _edgeDirty = true;
         }
     }

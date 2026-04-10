@@ -42,7 +42,7 @@ namespace CodeGamified.Celestial
         void Start()
         {
             _camera = Camera.main;
-            if (_camera == null) _camera = FindObjectOfType<Camera>();
+            if (_camera == null) _camera = FindFirstObjectByType<Camera>();
 
             LoadTextures();
             CreateSphere();

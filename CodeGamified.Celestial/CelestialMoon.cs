@@ -82,7 +82,11 @@ namespace CodeGamified.Celestial
         float _prevEarthshine, _prevSmooth;
         Color _prevEarthshineCol, _prevSurfaceTint;
 
-        const float SECONDS_PER_DAY = 86400f;
+        /// <summary>
+        /// Simulation seconds per game-day. Must match the game's SimulationTime day length.
+        /// Default 86400 = real-world; SeaRauber overrides to 120.
+        /// </summary>
+        public float secondsPerDay = 86400f;
 
         // Phase name thresholds (illuminated fraction boundaries)
         const float PHASE_NEW  = 0.02f;  // < this = New Moon
@@ -228,7 +232,7 @@ namespace CodeGamified.Celestial
         /// </summary>
         public void AdvanceOrbit(float dt)
         {
-            float periodSec = orbitalPeriodDays * SECONDS_PER_DAY;
+            float periodSec = orbitalPeriodDays * secondsPerDay;
             float angularVel = 360f / periodSec;
             _currentAngle = (_currentAngle + angularVel * dt) % 360f;
             UpdateOrbitalPosition();

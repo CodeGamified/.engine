@@ -66,7 +66,9 @@ namespace CodeGamified.TUI
             if (font != null) seedText.font = font;
             seedText.fontSize = fontSize;
             seedText.alignment = TextAlignmentOptions.Left;
+#pragma warning disable CS0618
             seedText.enableWordWrapping = false;
+#pragma warning restore CS0618
             seedText.overflowMode = TextOverflowModes.Overflow;
             seedText.richText = true;
             seedText.color = Color.white;

@@ -158,9 +158,9 @@ namespace CodeGamified.TUI.Blur
             }
         }
 
-#pragma warning disable CS0618
+#pragma warning disable CS0618, CS0672
         public override void Execute(ScriptableRenderContext context, ref RenderingData renderingData) { }
-#pragma warning restore CS0618
+#pragma warning restore CS0618, CS0672
 
         public void Dispose() { }
     }

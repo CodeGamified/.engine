@@ -64,6 +64,14 @@ namespace CodeGamified.WorldGraph
             return null;
         }
 
+        /// <summary>Find first node owned by an owner ID.</summary>
+        public TNode FindNodeByOwner(int ownerId)
+        {
+            foreach (var n in _nodes)
+                if (n.OwnerId == ownerId) return n;
+            return null;
+        }
+
         /// <summary>Find nodes matching a predicate.</summary>
         public List<TNode> FindNodes(Predicate<TNode> predicate)
         {
@@ -89,7 +97,11 @@ namespace CodeGamified.WorldGraph
         // ═══════════════════════════════════════════════════════
 
         /// <summary>Find shortest path between two nodes. Returns ordered edge list.</summary>
-        public List<TEdge> FindPath(int fromNodeId, int toNodeId)
+        public List<TEdge> FindPath(int fromNodeId, int toNodeId) =>
+            FindPath(fromNodeId, toNodeId, null);
+
+        /// <summary>Find shortest path with a custom edge cost function (e.g. weather-adjusted routes).</summary>
+        public List<TEdge> FindPath(int fromNodeId, int toNodeId, Func<TEdge, float> edgeCost)
         {
             if (fromNodeId == toNodeId) return new List<TEdge>();
 
@@ -113,7 +125,7 @@ namespace CodeGamified.WorldGraph
                 foreach (var edge in GetEdgesFrom(current))
                 {
                     int neighbor = edge.OtherNode(current);
-                    float newDist = cost + edge.Distance;
+                    float newDist = cost + (edgeCost != null ? edgeCost(edge) : edge.Distance);
                     if (!dist.ContainsKey(neighbor) || newDist < dist[neighbor])
                     {
                         dist[neighbor] = newDist;
@@ -135,6 +147,20 @@ namespace CodeGamified.WorldGraph
             }
             path.Reverse();
             return path;
+        }
+
+        // ═══════════════════════════════════════════════════════
+        // CLAIM — atomic owner assignment with category transition
+        // ═══════════════════════════════════════════════════════
+
+        /// <summary>Claim an unclaimed node: set owner and transition category atomically.</summary>
+        public bool ClaimNode(int nodeId, int ownerId, int expectedCategory, int newCategory)
+        {
+            var node = GetNode(nodeId);
+            if (node == null || node.Category != expectedCategory) return false;
+            node.Category = newCategory;
+            node.OwnerId = ownerId;
+            return true;
         }
 
         /// <summary>Total distance along a path of edges.</summary>

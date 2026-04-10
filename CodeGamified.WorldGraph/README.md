@@ -9,8 +9,9 @@ pairwise relations, biome contracts, and procedural layout generators.
 |---|---|
 | `WorldGraphNode` | Base node: ID, Name, Position, OwnerId, Category, EdgeIds |
 | `WorldGraphEdge` | Base edge: ID, NodeA, NodeB, Distance, Risk, OtherNode() |
-| `WorldGraph<TNode,TEdge>` | Generic graph: add/query/Dijkstra pathfinding |
-| `ActiveTraversal<TEdge>` | Entity traveling along edges: speed, progress, current edge |
+| `WorldGraph<TNode,TEdge>` | Generic graph: add/query/claim/Dijkstra pathfinding (with optional cost override) |
+| `ActiveTraversal<TEdge>` | Entity traveling along edges: speed, SpeedModifier, progress, current edge |
+| `TraversalManager<T,TEdge>` | Tick loop: advance traversals, detect arrivals + edge encounters via callbacks |
 | `RelationMatrix<TState>` | Symmetric pairwise relations between owners |
 | `BiomeDefinition` | Abstract biome: resource abundance + material palette contract |
 | `ArcMapGenerator` | Semicircular arc layout with adjacent + cross-link connectivity |
@@ -38,6 +39,22 @@ var path = graph.FindPath(0, 1);
 var trip = new ActiveTraversal<MyEdge>(0, 1, path) { Speed = 2f };
 trip.Advance(deltaTime);
 if (trip.IsComplete) { /* arrived */ }
+
+// Managed traversal loop with arrival + encounter detection
+var mgr = new TraversalManager<ActiveTraversal<MyEdge>, MyEdge>();
+mgr.OnArrival = t => Debug.Log($"Arrived at node {t.ToNodeId}");
+mgr.ShouldPause = t => false;
+mgr.GetSpeedMod = t => weatherSystem.SpeedMod;
+mgr.ShouldEngage = (a, b) => relations.Is(a.OwnerId, b.OwnerId, MyRelation.Hostile);
+mgr.OnEdgeEncounter = (a, b) => StartCombat(a, b);
+mgr.Add(trip);
+mgr.Tick(deltaTime); // advances, fires callbacks
+
+// Dynamic-cost pathfinding (e.g. avoid stormy routes)
+var safePath = graph.FindPath(0, 1, e => e.Distance * stormCost[e.Id]);
+
+// Claim a node
+graph.ClaimNode(nodeId, playerId, expectedCategory: 0, newCategory: 1);
 
 // Pairwise relations
 var relations = new RelationMatrix<MyRelation>(MyRelation.Neutral, MyRelation.Friendly);
